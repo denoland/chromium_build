@@ -2,7 +2,5 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-# pylint: disable=unused-wildcard-import
-# pylint: disable=wildcard-import
-
-from devil.utils.zip_utils import *
+# This package is intended for modules that are very tightly coupled to
+# tools or APIs from the Android SDK.
