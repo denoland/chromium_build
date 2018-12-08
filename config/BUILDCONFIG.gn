@@ -156,13 +156,20 @@ declare_args() {
 }
 
 declare_args() {
+  # Enabling `is_cargo_build` ensures that the libraries and object files that
+  # we produce can be used in a Cargo driven build.
+  is_cargo_build = false
+}
+
+declare_args() {
   # Component build. Setting to true compiles targets declared as "components"
   # as shared libraries loaded dynamically. This speeds up development time.
   # When false, components will be linked statically.
+  # This flag is ignored for Cargo builds; those builds only use static linking.
   #
   # For more information see
   # https://chromium.googlesource.com/chromium/src/+/master/docs/component_build.md
-  is_component_build = is_debug && current_os != "ios"
+  is_component_build = is_debug && !is_cargo_build && current_os != "ios"
 }
 
 assert(!(is_debug && is_official_build), "Can't do official debug builds")

@@ -401,7 +401,11 @@ config("cfi_linker") {
   # ASan and CFG leads to slow process startup. Chromium's test runner uses
   # lots of child processes, so this means things are really slow. Disable CFG
   # for now. https://crbug.com/846966
-  if (!is_debug && !is_component_build && !is_asan) {
+  # Linking to a dynamic CRT (which the Cargo build does) while using clang-cl
+  # triggers many CFG-related crashes. It doesn't happen when Microsoft's cl.exe
+  # is used, although with the switch to cl come some config/flag changes too.
+  # For now, don't use the control flow guard. TODO: Figure out the root cause.
+  if (!is_debug && !is_component_build && !is_asan && !is_cargo_build) {
     # Turn on CFG in msvc linker, regardless of compiler used. Turn off CFG for
     # longjmp (new in VS 2017) because it relies on compiler support which we do
     # not have enabled.
@@ -415,7 +419,12 @@ config("cfi_linker") {
 # See https://msdn.microsoft.com/en-us/library/2kzt1wy3.aspx for a reference of
 # what each value does.
 config("default_crt") {
-  if (is_component_build) {
+  if (is_cargo_build) {
+    # Rust uses the dynamic CRT by default, and it always uses the release CRT,
+    # even for debug builds. Although Rust executable projects can override this
+    # setting, we can't do that when we're publishing a cargo crate.
+    configs = [ ":rust_default_crt" ]
+  } else if (is_component_build) {
     # Component mode: dynamic CRT. Since the library is shared, it requires
     # exceptions or will give errors about things not matching, so keep
     # exceptions on.
@@ -461,6 +470,11 @@ config("static_crt") {
   } else {
     cflags = [ "/MT" ]
   }
+}
+
+config("rust_default_crt") {
+  # Rust dynamically links the CRT, and it always uses the release flavor.
+  cflags = [ "/MD" ]
 }
 
 # Subsystem --------------------------------------------------------------------
