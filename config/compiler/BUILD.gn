@@ -1600,6 +1600,13 @@ config("no_chromium_code") {
       "_CRT_NONSTDC_NO_WARNINGS",
       "_CRT_NONSTDC_NO_DEPRECATE",
     ]
+
+    # Work around gtest missing `#include <crtdbg.h>`. When the system libc++
+    # is used it gets included somehow via another header, but this doesn't
+    # work when our custom libc++ is used.
+    if (use_custom_libcxx) {
+      cflags += [ "/FIcrtdbg.h" ]
+    }
   } else {
     # GCC may emit unsuppressible warnings so don't add -Werror for no chromium
     # code. crbug.com/589724
