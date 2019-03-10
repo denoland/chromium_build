@@ -94,6 +94,8 @@ elif [ -e "$LD_SO_CONF_D" ]; then
   if [ $? -eq 0 ]; then
     for entry in $LD_SO_CONF_D/*.conf; do
       process_ld_so_conf "$1" "$entry"
-    done | xargs echo
+        # pyenv is fooled by xargs echo; don't know why.
+        echo "$1" "$entry"
+    done
   fi
 fi
