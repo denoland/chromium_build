@@ -1,11 +1,16 @@
 {
-  "features": [
+  "sandbox": {
+    "features": [
       "isolated-persistent-storage",
       "root-ssl-certificates",
       "system-temp",
-      "vulkan" ],
-  "dev": ["null", "zero"],
-  "services": [
+      "vulkan"
+    ],
+    "dev": [
+      "null",
+      "zero"
+    ],
+    "services": [
       "fuchsia.device.NameProvider",
       "fuchsia.fonts.Provider",
       "fuchsia.logger.Log",
@@ -28,5 +33,6 @@
       "fuchsia.ui.scenic.Scenic",
       "fuchsia.vulkan.loader.Loader",
       "fuchsia.web.ContextProvider"
-  ]
+    ]
+  }
 }
