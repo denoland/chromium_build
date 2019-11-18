@@ -1519,21 +1519,21 @@ config("default_warnings") {
         cflags += [
           # Ignore warnings about MSVC optimization pragmas.
           # TODO(thakis): Only for no_chromium_code? http://crbug.com/912662
-          "-Wno-ignored-pragma-optimize",
+          #"-Wno-ignored-pragma-optimize",
 
           # TODO(https://crbug.com/989932): Evaluate and possibly enable.
-          "-Wno-implicit-int-float-conversion",
+          #"-Wno-implicit-int-float-conversion",
 
           # TODO(https://crbug.com/999871): Decide if we want to clean up the
           # codebase or just disable this.  Doesn't seem super useful, but
           # also fires in only 2 files.
-          "-Wno-c99-designator",
+          #"-Wno-c99-designator",
 
           # TODO(https://crbug.com/999886): Clean up, enable.
-          "-Wno-final-dtor-non-final-class",
+          #"-Wno-final-dtor-non-final-class",
 
           # TODO(https://crbug.com/1002945): Evaluate and possibly enable.
-          "-Wno-sizeof-array-div",
+          #"-Wno-sizeof-array-div",
         ]
 
         cflags_c += [
