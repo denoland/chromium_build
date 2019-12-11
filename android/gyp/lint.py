@@ -19,7 +19,6 @@ from xml.etree import ElementTree
 
 from util import build_utils
 from util import manifest_utils
-from util import md5_check
 
 _LINT_MD_URL = 'https://chromium.googlesource.com/chromium/src/+/master/build/android/docs/lint.md' # pylint: disable=line-too-long
 
@@ -418,7 +417,7 @@ def main():
 
   output_paths = [args.result_path, args.processed_config_path]
 
-  md5_check.CallAndWriteDepfileIfStale(
+  build_utils.CallAndWriteDepfileIfStale(
       lambda: _OnStaleMd5(args.lint_path,
                           args.config_path,
                           args.processed_config_path,
