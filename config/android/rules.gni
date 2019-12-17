@@ -1438,8 +1438,8 @@ if (enable_java_templates) {
         srcjar_deps = []
       }
       srcjar_deps += [
-        ":$_jni_srcjar_target",
         ":$_compile_resources_target",
+        ":$_jni_srcjar_target",
 
         # This dep is required for any targets that depend on //base:base_java.
         "//base:base_build_config_gen",
@@ -1698,8 +1698,8 @@ if (enable_java_templates) {
   #   }
   template("proguarded_dist_dex") {
     _deps = [
-      "//third_party/android_sdk:android_sdk_java",
       "//build/android/buildhooks:build_hooks_android_impl_java",
+      "//third_party/android_sdk:android_sdk_java",
     ]
     if (defined(invoker.deps)) {
       _deps += invoker.deps
@@ -3335,8 +3335,8 @@ if (enable_java_templates) {
         }
       }
       _final_deps += [
-        ":$_write_installer_json_rule_name",
         ":$_java_target",
+        ":$_write_installer_json_rule_name",
       ]
     }
 
