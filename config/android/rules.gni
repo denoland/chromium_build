@@ -2837,6 +2837,7 @@ if (enable_java_templates) {
                                "processor_args_javac",
                                "secondary_abi_loadable_modules",
                                "secondary_native_lib_placeholders",
+                               "sources",
                                "static_library_dependent_targets",
                              ])
       deps = _deps
@@ -3510,6 +3511,7 @@ if (enable_java_templates) {
                                "shared_resources_whitelist_locales",
                                "shared_resources_whitelist_target",
                                "short_resource_paths",
+                               "sources",
                                "srcjar_deps",
                                "static_library_dependent_targets",
                                "static_library_provider",
