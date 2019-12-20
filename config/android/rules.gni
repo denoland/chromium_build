@@ -3356,6 +3356,22 @@ if (enable_java_templates) {
     # Generate apk operation related script.
     if (!_is_bundle_module &&
         (!defined(invoker.create_apk_script) || invoker.create_apk_script)) {
+      if (_uses_static_library) {
+        _install_artifacts_target = "${target_name}__install_artifacts"
+        _install_artifacts_json =
+            "${target_gen_dir}/${target_name}.install_artifacts"
+        generated_file(_install_artifacts_target) {
+          output_conversion = "json"
+          deps = [
+            invoker.static_library_provider,
+          ]
+          outputs = [
+            _install_artifacts_json,
+          ]
+          data_keys = [ "install_artifacts" ]
+          rebase = root_build_dir
+        }
+      }
       _apk_operations_target_name = "${target_name}__apk_operations"
       action_with_pydeps(_apk_operations_target_name) {
         _generated_script = "$root_build_dir/bin/${invoker.target_name}"
@@ -3392,6 +3408,19 @@ if (enable_java_templates) {
           args += [
             "--apk-path",
             rebase_path(_final_apk_path, root_build_dir),
+          ]
+        }
+        if (_uses_static_library) {
+          deps = [
+            ":$_install_artifacts_target",
+          ]
+          _rebased_install_artifacts_json =
+              rebase_path(_install_artifacts_json, root_build_dir)
+          _static_library_apk_path =
+              "@FileArg($_rebased_install_artifacts_json[])"
+          args += [
+            "--additional-apk",
+            _static_library_apk_path,
           ]
         }
         if (_proguard_enabled) {
@@ -4884,6 +4913,23 @@ if (enable_java_templates) {
       }
     }
 
+    if (_uses_static_library) {
+      _install_artifacts_target = "${target_name}__install_artifacts"
+      _install_artifacts_json =
+          "${target_gen_dir}/${target_name}.install_artifacts"
+      generated_file(_install_artifacts_target) {
+        output_conversion = "json"
+        deps = [
+          invoker.static_library_provider,
+        ]
+        outputs = [
+          _install_artifacts_json,
+        ]
+        data_keys = [ "install_artifacts" ]
+        rebase = root_build_dir
+      }
+    }
+
     # Generate a wrapper script for the bundle.
     _android_aapt2_path = android_sdk_tools_bundle_aapt2
 
@@ -4942,6 +4988,17 @@ if (enable_java_templates) {
         args += [
           "--command-line-flags-file",
           invoker.command_line_flags_file,
+        ]
+      }
+      if (_uses_static_library) {
+        deps += [ ":$_install_artifacts_target" ]
+        _rebased_install_artifacts_json =
+            rebase_path(_install_artifacts_json, root_build_dir)
+        _static_library_apk_path =
+            "@FileArg($_rebased_install_artifacts_json[])"
+        args += [
+          "--additional-apk",
+          _static_library_apk_path,
         ]
       }
 
