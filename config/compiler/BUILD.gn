@@ -634,8 +634,8 @@ config("compiler") {
         }
 
         # Disable TypePromotion to work around compiler crash in Android LTO builds.
-        # TODO(crbug.com/1033863): Get this fixed upstream.
-        if (target_os != "chromeos") {
+        # TODO(crbug.com/1033863): Fixed upstream; remove in next clang roll.
+        if (!llvm_force_head_revision && target_os != "chromeos") {
           ldflags += [
             "-Wl,-mllvm",
             "-Wl,-disable-type-promotion=true",
