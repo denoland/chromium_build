@@ -7,6 +7,7 @@
 """Adds the code parts to a resource APK."""
 
 import argparse
+import logging
 import os
 import shutil
 import sys
@@ -99,6 +100,8 @@ def _ParseArgs(args):
                       help='Keystore password')
   parser.add_argument('--key-name',
                       help='Keystore name')
+  parser.add_argument(
+      '--min-sdk-version', required=True, help='Value of APK\'s minSdkVersion')
   options = parser.parse_args(args)
   options.assets = build_utils.ParseGnList(options.assets)
   options.uncompressed_assets = build_utils.ParseGnList(
@@ -228,6 +231,7 @@ def _AddNativeLibraries(out_apk, native_libs, android_abi, uncompress):
 
 
 def main(args):
+  build_utils.InitLogging('APKBUILDER_DEBUG')
   args = build_utils.ExpandFileArgs(args)
   options = _ParseArgs(args)
 
@@ -297,14 +301,17 @@ def main(args):
       resource_infos = resource_apk.infolist()
 
       # 1. AndroidManifest.xml
+      logging.debug('Adding AndroidManifest.xml')
       copy_resource(
           resource_apk.getinfo('AndroidManifest.xml'), out_dir=apk_manifest_dir)
 
       # 2. Assets
+      logging.debug('Adding assets/')
       _AddAssets(out_apk, assets, disable_compression=False)
       _AddAssets(out_apk, uncompressed_assets, disable_compression=True)
 
       # 3. Dex files
+      logging.debug('Adding classes.dex')
       if options.dex_file and options.dex_file.endswith('.zip'):
         with zipfile.ZipFile(options.dex_file, 'r') as dex_zip:
           for dex in (d for d in dex_zip.namelist() if d.endswith('.dex')):
@@ -321,6 +328,7 @@ def main(args):
             compress=not options.uncompress_dex)
 
       # 4. Native libraries.
+      logging.debug('Adding lib/')
       _AddNativeLibraries(out_apk, native_libs, options.android_abi,
                           options.uncompress_shared_libraries)
 
@@ -359,6 +367,7 @@ def main(args):
         build_utils.AddToZipHermetic(out_apk, apk_path, data='')
 
       # 5. Resources
+      logging.debug('Adding res/')
       for info in sorted(resource_infos, key=lambda i: i.filename):
         if info.filename != 'AndroidManifest.xml':
           copy_resource(info)
@@ -366,6 +375,7 @@ def main(args):
       # 6. Java resources that should be accessible via
       # Class.getResourceAsStream(), in particular parts of Emma jar.
       # Prebuilt jars may contain class files which we shouldn't include.
+      logging.debug('Adding Java resources')
       for java_resource in options.java_resources:
         with zipfile.ZipFile(java_resource, 'r') as java_resource_jar:
           for apk_path in sorted(java_resource_jar.namelist()):
@@ -386,7 +396,8 @@ def main(args):
     if options.format == 'apk':
       finalize_apk.FinalizeApk(options.apksigner_jar, options.zipalign_path,
                                f.name, f.name, options.key_path,
-                               options.key_passwd, options.key_name)
+                               options.key_passwd, options.key_name,
+                               int(options.min_sdk_version))
 
   if options.depfile:
     build_utils.WriteDepfile(

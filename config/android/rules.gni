@@ -2993,9 +2993,9 @@ if (enable_java_templates) {
                                [
                                  "disable_checkdiscard",
                                  "disable_r8_outlining",
-                                 "min_sdk_version",
                                  "dexlayout_profile",
                                ])
+        min_sdk_version = _min_sdk_version
         proguard_enabled = _proguard_enabled
         build_config = _build_config
         deps = [
@@ -3256,6 +3256,7 @@ if (enable_java_templates) {
         keystore_name = _keystore_name
         keystore_path = _keystore_path
         keystore_password = _keystore_password
+        min_sdk_version = _min_sdk_version
         uncompress_shared_libraries = _uncompress_shared_libraries
 
         deps = _deps + [ ":$_build_config_target" ]
@@ -4785,6 +4786,7 @@ if (enable_java_templates) {
         forward_variables_from(invoker,
                                [
                                  "is_multi_abi",
+                                 "min_sdk_version",
                                  "uncompress_dex",
                                ])
         module_name = _module.name

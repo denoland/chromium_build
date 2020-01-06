@@ -2542,6 +2542,7 @@ if (enable_java_templates) {
   #   dex_path: Path to classes.dex file to include (optional).
   #   packaged_resources_path: Path to .ap_ to use.
   #   output_apk_path: Output path for the generated .apk.
+  #   min_sdk_version: The minimum Android SDK version this target supports.
   #   native_lib_placeholders: List of placeholder filenames to add to the apk
   #     (optional).
   #   secondary_native_lib_placeholders: List of placeholder filenames to add to
@@ -2616,6 +2617,7 @@ if (enable_java_templates) {
         invoker.keystore_name,
         "--key-passwd",
         invoker.keystore_password,
+        "--min-sdk-version=${invoker.min_sdk_version}",
       ]
       if (defined(invoker.uncompress_dex) && invoker.uncompress_dex) {
         args += [ "--uncompress-dex" ]
@@ -3667,6 +3669,7 @@ template("create_android_app_bundle_module") {
       "--secondary-native-lib-placeholders=@FileArg($_rebased_build_config" +
           ":native:secondary_native_library_placeholders)",
       "--android-abi=$android_app_abi",
+      "--min-sdk-version=${invoker.min_sdk_version}",
       "--uncompress-shared-libraries=@FileArg(" +
           "$_rebased_build_config:native:uncompress_shared_libraries)",
     ]
