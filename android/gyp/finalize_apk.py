@@ -18,18 +18,23 @@ def FinalizeApk(apksigner_path, zipalign_path, unsigned_apk_path,
   # Use a tempfile so that Ctrl-C does not leave the file with a fresh mtime
   # and a corrupted state.
   with tempfile.NamedTemporaryFile() as staging_file:
-    # v2 signing requires that zipalign happen first.
-    logging.debug('Running zipalign')
-    subprocess.check_output([
-        zipalign_path, '-p', '-f', '4',
-        unsigned_apk_path, staging_file.name])
+    if zipalign_path:
+      # v2 signing requires that zipalign happen first.
+      logging.debug('Running zipalign')
+      subprocess.check_output([
+          zipalign_path, '-p', '-f', '4', unsigned_apk_path, staging_file.name
+      ])
+      signer_input_path = staging_file.name
+    else:
+      signer_input_path = unsigned_apk_path
+
     sign_cmd = [
         build_utils.JAVA_PATH,
         '-jar',
         apksigner_path,
         'sign',
         '--in',
-        staging_file.name,
+        signer_input_path,
         '--out',
         staging_file.name,
         '--ks',
