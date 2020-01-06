@@ -901,11 +901,6 @@ if (enable_java_templates) {
   #   alternative_android_sdk_dep: Optional. Alternative Android system
   #     android java target to use.
   #   resource_dirs: List of directories containing resources for this target.
-  #   generated_resource_dirs (deprecated):
-  #     **This is deprecated, you only need to specify generated files directly
-  #     in |generated_resource_files|**
-  #   generated_resource_files: List of all resource files for this target
-  #     which are *generated* by a dependency.
   #   android_manifest: AndroidManifest.xml for this target (optional). Will be
   #     merged into apks that directly or indirectly depend on this target.
   #   android_manifest_dep: Target that generates AndroidManifest (if applicable)
@@ -941,11 +936,6 @@ if (enable_java_templates) {
     _base_path = "$target_gen_dir/$target_name"
     if (defined(invoker.v14_skip)) {
       not_needed(invoker, [ "v14_skip" ])
-    }
-
-    # TODO(https://crbug.com/1026378): remove unneeded generated_resource_dirs
-    if (defined(invoker.generated_resource_dirs)) {
-      not_needed(invoker, [ "generated_resource_dirs" ])
     }
 
     _pass_resource_files = defined(invoker.sources)
@@ -989,9 +979,7 @@ if (enable_java_templates) {
       }
       _resource_files = rebase_path(_sources_build_rel, ".", root_build_dir)
     }
-    if (defined(invoker.generated_resource_files)) {
-      _resource_files += invoker.generated_resource_files
-    }
+
     _rebased_resource_files = rebase_path(_resource_files, root_build_dir)
     write_file(_res_sources_path, _rebased_resource_files)
 
@@ -4323,15 +4311,9 @@ if (enable_java_templates) {
         if (!_ignore_manifest) {
           android_manifest = "${_output_path}/AndroidManifest.xml"
         }
-        resource_dirs = []
-        generated_resource_dirs = []
-        if (!_strip_resources && _scanned_files.resources != []) {
-          generated_resource_dirs += [ "${_output_path}/res" ]
-        }
-        generated_resource_files = []
+        sources = []
         if (!_strip_resources) {
-          generated_resource_files =
-              rebase_path(_scanned_files.resources, "", _output_path)
+          sources = rebase_path(_scanned_files.resources, "", _output_path)
         }
         if (!_strip_resources && _scanned_files.has_r_text_file) {
           r_text_file = "${_output_path}/R.txt"
