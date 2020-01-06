@@ -839,11 +839,7 @@ if (enable_java_templates) {
   #     variables = ["color=red"]
   #   }
   template("jinja_template_resources") {
-    # JUnit tests use resource zip files. These must not be put in gen/
-    # directory or they will not be available to tester bots.
-    _resources_zip_rebased_path = rebase_path(target_gen_dir, root_gen_dir)
-    _resources_zip = "${root_out_dir}/resource_zips/${_resources_zip_rebased_path}/${target_name}.resources.zip"
-
+    _resources_zip = "$target_out_dir/${target_name}.resources.zip"
     _generating_target_name = "${target_name}__template"
 
     action_with_pydeps(_generating_target_name) {
@@ -941,10 +937,7 @@ if (enable_java_templates) {
     _pass_resource_files = defined(invoker.sources)
     _res_sources_path = "$target_gen_dir/${invoker.target_name}.res.sources"
 
-    # JUnit tests use resource zip files. These must not be put in gen/
-    # directory or they will not be available to tester bots.
-    _resources_zip_rebased_path = rebase_path(target_gen_dir, root_gen_dir)
-    _zip_path = "${root_out_dir}/resource_zips/${_resources_zip_rebased_path}/${target_name}.resources.zip"
+    _resources_zip = "$target_out_dir/$target_name.resources.zip"
     _r_text_out_path = _base_path + "_R.txt"
     _build_config = _base_path + ".build_config"
     _build_config_target_name = "$target_name$build_config_target_suffix"
@@ -986,7 +979,7 @@ if (enable_java_templates) {
     write_build_config(_build_config_target_name) {
       type = "android_resources"
       build_config = _build_config
-      resources_zip = _zip_path
+      resources_zip = _resources_zip
       res_sources_path = _res_sources_path
 
       if (defined(_srcjar_path)) {
@@ -1027,7 +1020,7 @@ if (enable_java_templates) {
       sources = _resource_files
 
       build_config = _build_config
-      zip_path = _zip_path
+      resources_zip = _resources_zip
       r_text_out_path = _r_text_out_path
 
       if (defined(invoker.r_text_file)) {
@@ -1184,11 +1177,7 @@ if (enable_java_templates) {
   template("java_strings_grd") {
     forward_variables_from(invoker, [ "testonly" ])
 
-    # JUnit tests use resource zip files. These must not be put in gen/
-    # directory or they will not be available to tester bots.
-    _resources_zip_rebased_path = rebase_path(target_gen_dir, root_gen_dir)
-    _resources_zip = "${root_out_dir}/resource_zips/${_resources_zip_rebased_path}/${target_name}.resources.zip"
-
+    _resources_zip = "$target_out_dir/$target_name.resources.zip"
     _grit_target_name = "${target_name}__grit"
     _grit_output_dir = "$target_gen_dir/${target_name}_grit_output"
 
@@ -1249,11 +1238,7 @@ if (enable_java_templates) {
   template("java_strings_grd_prebuilt") {
     forward_variables_from(invoker, [ "testonly" ])
 
-    # JUnit tests use resource zip files. These must not be put in gen/
-    # directory or they will not be available to tester bots.
-    _resources_zip_rebased_path = rebase_path(target_gen_dir, root_gen_dir)
-    _resources_zip = "${root_out_dir}/resource_zips/${_resources_zip_rebased_path}/${target_name}.resources.zip"
-
+    _resources_zip = "$target_out_dir/$target_name.resources.zip"
     _zip_target_name = "${target_name}__zip"
 
     zip(_zip_target_name) {
