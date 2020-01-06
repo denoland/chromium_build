@@ -2619,8 +2619,15 @@ if (enable_java_templates) {
         invoker.keystore_password,
         "--min-sdk-version=${invoker.min_sdk_version}",
       ]
+      if (is_official_build) {
+        args += [ "--best-compression" ]
+      }
       if (defined(invoker.uncompress_dex) && invoker.uncompress_dex) {
         args += [ "--uncompress-dex" ]
+      }
+      if (defined(invoker.uncompress_shared_libraries) &&
+          invoker.uncompress_shared_libraries) {
+        args += [ "--uncompress-shared-libraries=True" ]
       }
       if (defined(invoker.assets_build_config)) {
         inputs += [ invoker.assets_build_config ]
@@ -2673,11 +2680,6 @@ if (enable_java_templates) {
       }
       if (_secondary_native_lib_placeholders != []) {
         args += [ "--secondary-native-lib-placeholders=$_secondary_native_lib_placeholders" ]
-      }
-
-      if (defined(invoker.uncompress_shared_libraries) &&
-          invoker.uncompress_shared_libraries) {
-        args += [ "--uncompress-shared-libraries=True" ]
       }
     }
   }

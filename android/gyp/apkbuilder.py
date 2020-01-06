@@ -13,6 +13,7 @@ import shutil
 import sys
 import tempfile
 import zipfile
+import zlib
 
 import finalize_apk
 
@@ -102,6 +103,10 @@ def _ParseArgs(args):
                       help='Keystore name')
   parser.add_argument(
       '--min-sdk-version', required=True, help='Value of APK\'s minSdkVersion')
+  parser.add_argument(
+      '--best-compression',
+      action='store_true',
+      help='Use zip -9 rather than zip -1')
   options = parser.parse_args(args)
   options.assets = build_utils.ParseGnList(options.assets)
   options.uncompressed_assets = build_utils.ParseGnList(
@@ -234,6 +239,15 @@ def main(args):
   build_utils.InitLogging('APKBUILDER_DEBUG')
   args = build_utils.ExpandFileArgs(args)
   options = _ParseArgs(args)
+
+  # Until Python 3.7, there's no better way to set compression level.
+  # The default is 6.
+  if options.best_compression:
+    # Compresses about twice as slow as the default.
+    zlib.Z_DEFAULT_COMPRESSION = 9
+  else:
+    # Compresses about twice as fast as the default.
+    zlib.Z_DEFAULT_COMPRESSION = 1
 
   native_libs = sorted(options.native_libs)
 
@@ -398,6 +412,7 @@ def main(args):
                                f.name, f.name, options.key_path,
                                options.key_passwd, options.key_name,
                                int(options.min_sdk_version))
+    logging.debug('Moving file into place')
 
   if options.depfile:
     build_utils.WriteDepfile(
