@@ -40,9 +40,10 @@ Still reading?
   <issue id="ButtonStyle" severity="Error">
     <ignore regexp="remoting/android/host/res/layout/main.xml"/>
   </issue>
-  <!-- Found in generated android_chrome_strings.xml. -->
+  <!-- Can be removed when BOM marks are removed: https://crbug.com/1033305-->
   <issue id="ByteOrderMark" severity="Error">
     <ignore regexp="values-pt-rBR/android_chrome_strings.xml"/>
+    <ignore regexp="values-si/android_chrome_strings.xml"/>
   </issue>
   <issue id="ClickableViewAccessibility" severity="ignore"/>
   <issue id="CommitPrefEdits">
@@ -151,6 +152,8 @@ Still reading?
     <!-- see crbug.com/542435 -->
     <ignore regexp="android_webview/nonembedded/java/res"/>
     <ignore regexp="android_webview/tools/system_webview_shell/apk/res"/>
+    <!-- This is intentional to reduce APK size. See: http://crrev/c/1352161 -->
+    <ignore regexp="chrome/android/features/autofill_assistant/java/res"/>
     <ignore regexp="chrome/android/webapk/shell_apk/res"/>
     <ignore regexp="chromecast/internal"/>
     <!-- crbug.com/457918 is tracking missing assets -->
@@ -281,14 +284,18 @@ Still reading?
     <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-pl/android_chrome_strings.xml"/>
     <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values/android_chrome_strings.xml"/>
   </issue>
+  <!-- Most .xtb files in this group have a % that is not part of a formatted string. https://crbug.com/941164 -->
   <issue id="StringFormatInvalid" severity="Error">
     <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-cs/android_chrome_strings.xml"/>
     <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-da/android_chrome_strings.xml"/>
     <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-et/android_chrome_strings.xml"/>
+    <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-is/android_chrome_strings.xml"/>
     <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-pl/android_chrome_strings.xml"/>
     <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-pt-rBR/android_chrome_strings.xml"/>
+    <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-sq/android_chrome_strings.xml"/>
     <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-sv/android_chrome_strings.xml"/>
     <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-tl/android_chrome_strings.xml"/>
+    <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-uz/android_chrome_strings.xml"/>
   </issue>
   <!-- We have many C++ enums that we don't care about in java -->
   <issue id="SwitchIntDef" severity="ignore"/>
@@ -297,6 +304,10 @@ Still reading?
   </issue>
   <issue id="TypographyDashes" severity="Error">
     <ignore regexp="chrome/app/policy/android/values-v21/restriction_values.xml"/>
+  </issue>
+  <!-- If no space is after ... in a translation grit does not automatically change it to … -->
+  <issue id="TypographyEllipsis" severity="Error">
+    <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-az/android_chrome_strings.xml"/>
   </issue>
   <!-- Typos check disabled due to lint bug: http://crbug.com/671170 -->
   <issue id="Typos" severity="ignore"/>
@@ -309,24 +320,32 @@ Still reading?
     <ignore regexp="chrome/android/features/tab_ui/java_strings_grd.resources.zip/values-cs/android_chrome_tab_ui_strings.xml"/>
     <ignore regexp="chrome/android/features/tab_ui/java_strings_grd.resources.zip/values-in/android_chrome_tab_ui_strings.xml"/>
     <ignore regexp="chrome/android/features/tab_ui/java_strings_grd.resources.zip/values-ja/android_chrome_tab_ui_strings.xml"/>
+    <ignore regexp="chrome/android/features/tab_ui/java_strings_grd.resources.zip/values-km/android_chrome_tab_ui_strings.xml"/>
     <ignore regexp="chrome/android/features/tab_ui/java_strings_grd.resources.zip/values-ko/android_chrome_tab_ui_strings.xml"/>
+    <ignore regexp="chrome/android/features/tab_ui/java_strings_grd.resources.zip/values-lo/android_chrome_tab_ui_strings.xml"/>
     <ignore regexp="chrome/android/features/tab_ui/java_strings_grd.resources.zip/values-lt/android_chrome_tab_ui_strings.xml"/>
     <ignore regexp="chrome/android/features/tab_ui/java_strings_grd.resources.zip/values-ms/android_chrome_tab_ui_strings.xml"/>
+    <ignore regexp="chrome/android/features/tab_ui/java_strings_grd.resources.zip/values-my/android_chrome_tab_ui_strings.xml"/>
     <ignore regexp="chrome/android/features/tab_ui/java_strings_grd.resources.zip/values-sk/android_chrome_tab_ui_strings.xml"/>
     <ignore regexp="chrome/android/features/tab_ui/java_strings_grd.resources.zip/values-th/android_chrome_tab_ui_strings.xml"/>
     <ignore regexp="chrome/android/features/tab_ui/java_strings_grd.resources.zip/values-vi/android_chrome_tab_ui_strings.xml"/>
     <ignore regexp="chrome/android/features/tab_ui/java_strings_grd.resources.zip/values-zh-rCN/android_chrome_tab_ui_strings.xml"/>
+    <ignore regexp="chrome/android/features/tab_ui/java_strings_grd.resources.zip/values-zh-rHK/android_chrome_tab_ui_strings.xml"/>
     <ignore regexp="chrome/android/features/tab_ui/java_strings_grd.resources.zip/values-zh-rTW/android_chrome_tab_ui_strings.xml"/>
     <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-cs/android_chrome_strings.xml"/>
     <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-in/android_chrome_strings.xml"/>
     <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-ja/android_chrome_strings.xml"/>
+    <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-km/android_chrome_strings.xml"/>
     <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-ko/android_chrome_strings.xml"/>
+    <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-lo/android_chrome_strings.xml"/>
     <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-lt/android_chrome_strings.xml"/>
     <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-ms/android_chrome_strings.xml"/>
+    <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-my/android_chrome_strings.xml"/>
     <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-sk/android_chrome_strings.xml"/>
     <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-th/android_chrome_strings.xml"/>
     <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-vi/android_chrome_strings.xml"/>
     <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-zh-rCN/android_chrome_strings.xml"/>
+    <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-zh-rHK/android_chrome_strings.xml"/>
     <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-zh-rTW/android_chrome_strings.xml"/>
   </issue>
   <issue id="UnusedResources">
@@ -371,8 +390,9 @@ Still reading?
     <ignore regexp="android_webview/test/shell/res/raw/resource_file.html"/>
     <ignore regexp="android_webview/test/shell/res/raw/resource_icon.png"/>
     <ignore regexp="android_webview/tools/automated_ui_tests/java/res/layout/"/>
-    <!-- TODO(https://crbug.com/1017190): Remove suppression once we lint entire app rather than
+    <!-- TODO(https://crbug.com/1017190): Remove suppressions once we lint entire app rather than
          each individual target -->
+    <ignore regexp="components/browser_ui/strings/android/browser_ui_strings_grd"/>
     <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd"/>
     <!-- 1 resource used by android tv to generate resources.zip file -->
     <ignore regexp="chromecast/internal/shell/browser/android/java/res/drawable-hdpi/ic_settings_cast.png"/>

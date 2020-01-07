@@ -5,7 +5,6 @@
 # found in the LICENSE file.
 
 import distutils.spawn
-import itertools
 import logging
 import multiprocessing
 import optparse
@@ -19,13 +18,10 @@ from util import build_utils
 from util import md5_check
 from util import jar_info_utils
 
-import jar
-
 sys.path.insert(
     0,
     os.path.join(build_utils.DIR_SOURCE_ROOT, 'third_party', 'colorama', 'src'))
 import colorama
-
 
 # Full list of checks: https://errorprone.info/bugpatterns
 ERRORPRONE_WARNINGS_TO_TURN_OFF = [
@@ -148,10 +144,10 @@ ERRORPRONE_WARNINGS_TO_ERROR = [
 
 def ProcessJavacOutput(output):
   fileline_prefix = r'(?P<fileline>(?P<file>[-.\w/\\]+.java):(?P<line>[0-9]+):)'
-  warning_re = re.compile(
-      fileline_prefix + r'(?P<full_message> warning: (?P<message>.*))$')
-  error_re = re.compile(
-      fileline_prefix + r'(?P<full_message> (?P<message>.*))$')
+  warning_re = re.compile(fileline_prefix +
+                          r'(?P<full_message> warning: (?P<message>.*))$')
+  error_re = re.compile(fileline_prefix +
+                        r'(?P<full_message> (?P<message>.*))$')
   marker_re = re.compile(r'\s*(?P<marker>\^)\s*$')
 
   # These warnings cannot be suppressed even for third party code. Deprecation
@@ -164,21 +160,18 @@ def ProcessJavacOutput(output):
 
   warning_color = ['full_message', colorama.Fore.YELLOW + colorama.Style.DIM]
   error_color = ['full_message', colorama.Fore.MAGENTA + colorama.Style.BRIGHT]
-  marker_color = ['marker',  colorama.Fore.BLUE + colorama.Style.BRIGHT]
+  marker_color = ['marker', colorama.Fore.BLUE + colorama.Style.BRIGHT]
 
   def Colorize(line, regex, color):
     match = regex.match(line)
     start = match.start(color[0])
     end = match.end(color[0])
-    return (line[:start]
-            + color[1] + line[start:end]
-            + colorama.Fore.RESET + colorama.Style.RESET_ALL
-            + line[end:])
+    return (line[:start] + color[1] + line[start:end] + colorama.Fore.RESET +
+            colorama.Style.RESET_ALL + line[end:])
 
   def ApplyFilters(line):
-    return not (deprecated_re.match(line)
-        or unchecked_re.match(line)
-        or recompile_re.match(line))
+    return not (deprecated_re.match(line) or unchecked_re.match(line)
+                or recompile_re.match(line))
 
   def ApplyColors(line):
     if warning_re.match(line):
@@ -238,95 +231,117 @@ def _ParsePackageAndClassNames(java_file):
   return package_name, class_names
 
 
-def _CheckPathMatchesClassName(java_file, package_name, class_name):
-  parts = package_name.split('.') + [class_name + '.java']
-  expected_path_suffix = os.path.sep.join(parts)
-  if not java_file.endswith(expected_path_suffix):
-    raise Exception(('Java package+class name do not match its path.\n'
-                     'Actual path: %s\nExpected path: %s') %
-                    (java_file, expected_path_suffix))
-
-
-def _MoveGeneratedJavaFilesToGenDir(classes_dir, generated_java_dir):
-  # Move any Annotation Processor-generated .java files into $out/gen
-  # so that codesearch can find them.
-  javac_generated_sources = []
-  for src_path in build_utils.FindInDirectory(classes_dir, '*.java'):
-    dst_path = os.path.join(generated_java_dir,
-                            os.path.relpath(src_path, classes_dir))
-    build_utils.MakeDirectory(os.path.dirname(dst_path))
-    shutil.move(src_path, dst_path)
-    javac_generated_sources.append(dst_path)
-  return javac_generated_sources
-
-
 def _ProcessJavaFileForInfo(java_file):
   package_name, class_names = _ParsePackageAndClassNames(java_file)
   return java_file, package_name, class_names
 
 
-def _ProcessInfo(java_file, package_name, class_names, source, chromium_code):
-  for class_name in class_names:
-    yield '{}.{}'.format(package_name, class_name)
-    # Skip aidl srcjars since they don't indent code correctly.
-    if '_aidl.srcjar' in source:
-      continue
-    assert not chromium_code or len(class_names) == 1, (
-        'Chromium java files must only have one class: {}'.format(source))
-    if chromium_code:
-      # This check is not necessary but nice to check this somewhere.
-      _CheckPathMatchesClassName(java_file, package_name, class_names[0])
+class _InfoFileContext(object):
+  """Manages the creation of the class->source file .info file."""
 
+  def __init__(self, chromium_code, excluded_globs):
+    self._chromium_code = chromium_code
+    self._excluded_globs = excluded_globs
+    # Map of .java path -> .srcjar/nested/path.java.
+    self._srcjar_files = {}
+    # List of generators from pool.imap_unordered().
+    self._results = []
+    # Lazily created multiprocessing.Pool.
+    self._pool = None
 
-def _ShouldIncludeInJarInfo(fully_qualified_name, excluded_globs):
-  name_as_class_glob = fully_qualified_name.replace('.', '/') + '.class'
-  return not build_utils.MatchesGlob(name_as_class_glob, excluded_globs)
+  def AddSrcJarSources(self, srcjar_path, extracted_paths, parent_dir):
+    for path in extracted_paths:
+      # We want the path inside the srcjar so the viewer can have a tree
+      # structure.
+      self._srcjar_files[path] = '{}/{}'.format(
+          srcjar_path, os.path.relpath(path, parent_dir))
 
+  def SubmitFiles(self, java_files):
+    if self._pool is None:
+      # Restrict to just one process to not slow down compiling. Compiling
+      # is always slower.
+      self._pool = multiprocessing.Pool(1)
+    logging.info('Submitting %d files for info', len(java_files))
+    self._results.append(
+        self._pool.imap_unordered(
+            _ProcessJavaFileForInfo, java_files, chunksize=1000))
 
-def _CreateInfoFile(java_files, jar_path, chromium_code, srcjar_files,
-                    classes_dir, generated_java_dir, excluded_globs):
-  """Writes a .jar.info file.
+  def _CheckPathMatchesClassName(self, java_file, package_name, class_name):
+    parts = package_name.split('.') + [class_name + '.java']
+    expected_path_suffix = os.path.sep.join(parts)
+    if not java_file.endswith(expected_path_suffix):
+      raise Exception(('Java package+class name do not match its path.\n'
+                       'Actual path: %s\nExpected path: %s') %
+                      (java_file, expected_path_suffix))
 
-  This maps fully qualified names for classes to either the java file that they
-  are defined in or the path of the srcjar that they came from.
-  """
-  output_path = jar_path + '.info'
-  logging.info('Start creating info file: %s', output_path)
-  javac_generated_sources = _MoveGeneratedJavaFilesToGenDir(
-      classes_dir, generated_java_dir)
-  logging.info('Finished moving generated java files: %s', output_path)
-  # 2 processes saves ~0.9s, 3 processes saves ~1.2s, 4 processes saves ~1.2s.
-  pool = multiprocessing.Pool(processes=3)
-  results = pool.imap_unordered(
-      _ProcessJavaFileForInfo,
-      itertools.chain(java_files, javac_generated_sources),
-      chunksize=10)
-  pool.close()
-  all_info_data = {}
-  for java_file, package_name, class_names in results:
-    source = srcjar_files.get(java_file, java_file)
-    for fully_qualified_name in _ProcessInfo(
-        java_file, package_name, class_names, source, chromium_code):
-      if _ShouldIncludeInJarInfo(fully_qualified_name, excluded_globs):
-        all_info_data[fully_qualified_name] = java_file
-  logging.info('Writing info file: %s', output_path)
-  with build_utils.AtomicOutput(output_path) as f:
-    jar_info_utils.WriteJarInfoFile(f, all_info_data, srcjar_files)
-  logging.info('Completed info file: %s', output_path)
+  def _ProcessInfo(self, java_file, package_name, class_names, source):
+    for class_name in class_names:
+      yield '{}.{}'.format(package_name, class_name)
+      # Skip aidl srcjars since they don't indent code correctly.
+      if '_aidl.srcjar' in source:
+        continue
+      assert not self._chromium_code or len(class_names) == 1, (
+          'Chromium java files must only have one class: {}'.format(source))
+      if self._chromium_code:
+        # This check is not necessary but nice to check this somewhere.
+        self._CheckPathMatchesClassName(java_file, package_name, class_names[0])
+
+  def _ShouldIncludeInJarInfo(self, fully_qualified_name):
+    name_as_class_glob = fully_qualified_name.replace('.', '/') + '.class'
+    return not build_utils.MatchesGlob(name_as_class_glob, self._excluded_globs)
+
+  def _Collect(self):
+    if self._pool is None:
+      return {}
+    ret = {}
+    for result in self._results:
+      for java_file, package_name, class_names in result:
+        source = self._srcjar_files.get(java_file, java_file)
+        for fully_qualified_name in self._ProcessInfo(java_file, package_name,
+                                                      class_names, source):
+          if self._ShouldIncludeInJarInfo(fully_qualified_name):
+            ret[fully_qualified_name] = java_file
+    self._pool.terminate()
+    return ret
+
+  def __del__(self):
+    # Work around for Python 2.x bug with multiprocessing and daemon threads:
+    # https://bugs.python.org/issue4106
+    if self._pool is not None:
+      logging.info('Joining multiprocessing.Pool')
+      self._pool.terminate()
+      self._pool.join()
+      logging.info('Done.')
+
+  def Commit(self, output_path):
+    """Writes a .jar.info file.
+
+    Maps fully qualified names for classes to either the java file that they
+    are defined in or the path of the srcjar that they came from.
+    """
+    logging.info('Collecting info file entries')
+    entries = self._Collect()
+
+    logging.info('Writing info file: %s', output_path)
+    with build_utils.AtomicOutput(output_path) as f:
+      jar_info_utils.WriteJarInfoFile(f, entries, self._srcjar_files)
+    logging.info('Completed info file: %s', output_path)
 
 
 def _CreateJarFile(jar_path, provider_configurations, additional_jar_files,
                    classes_dir):
   logging.info('Start creating jar file: %s', jar_path)
   with build_utils.AtomicOutput(jar_path) as f:
-    jar.JarDirectory(
-        classes_dir,
-        f.name,
-        # Avoid putting generated java files into the jar since
-        # _MoveGeneratedJavaFilesToGenDir has not completed yet
-        predicate=lambda name: not name.endswith('.java'),
-        provider_configurations=provider_configurations,
-        additional_files=additional_jar_files)
+    with zipfile.ZipFile(f.name, 'w') as z:
+      build_utils.ZipDir(z, classes_dir)
+      if provider_configurations:
+        for config in provider_configurations:
+          zip_path = 'META-INF/services/' + os.path.basename(config)
+          build_utils.AddToZipHermetic(z, zip_path, src_path=config)
+
+      if additional_jar_files:
+        for src_path, zip_path in additional_jar_files:
+          build_utils.AddToZipHermetic(z, zip_path, src_path=src_path)
   logging.info('Completed jar file: %s', jar_path)
 
 
@@ -337,40 +352,48 @@ def _OnStaleMd5(options, javac_cmd, java_files, classpath):
   # rules run both in parallel, with Error Prone only used for checks.
   save_outputs = not options.enable_errorprone
 
-  with build_utils.TempDir() as temp_dir:
-    srcjars = options.java_srcjars
-
+  # Use jar_path's directory to ensure paths are relative (needed for goma).
+  temp_dir = options.jar_path + '.staging'
+  shutil.rmtree(temp_dir, True)
+  os.makedirs(temp_dir)
+  try:
     classes_dir = os.path.join(temp_dir, 'classes')
-    os.makedirs(classes_dir)
 
     if save_outputs:
-      generated_java_dir = options.generated_dir
+      input_srcjars_dir = os.path.join(options.generated_dir, 'input_srcjars')
+      annotation_processor_outputs_dir = os.path.join(
+          options.generated_dir, 'annotation_processor_outputs')
+      # Delete any stale files in the generated directory. The purpose of
+      # options.generated_dir is for codesearch.
+      shutil.rmtree(options.generated_dir, True)
+      info_file_context = _InfoFileContext(options.chromium_code,
+                                           options.jar_info_exclude_globs)
     else:
-      generated_java_dir = os.path.join(temp_dir, 'gen')
+      input_srcjars_dir = os.path.join(temp_dir, 'input_srcjars')
+      annotation_processor_outputs_dir = os.path.join(
+          temp_dir, 'annotation_processor_outputs')
 
-    shutil.rmtree(generated_java_dir, True)
-
-    srcjar_files = {}
-    if srcjars:
-      logging.info('Extracting srcjars to %s', generated_java_dir)
-      build_utils.MakeDirectory(generated_java_dir)
-      jar_srcs = []
+    if options.java_srcjars:
+      logging.info('Extracting srcjars to %s', input_srcjars_dir)
+      build_utils.MakeDirectory(input_srcjars_dir)
       for srcjar in options.java_srcjars:
         extracted_files = build_utils.ExtractAll(
-            srcjar, no_clobber=True, path=generated_java_dir, pattern='*.java')
-        for path in extracted_files:
-          # We want the path inside the srcjar so the viewer can have a tree
-          # structure.
-          srcjar_files[path] = '{}/{}'.format(
-              srcjar, os.path.relpath(path, generated_java_dir))
-        jar_srcs.extend(extracted_files)
+            srcjar, no_clobber=True, path=input_srcjars_dir, pattern='*.java')
+        java_files.extend(extracted_files)
+        if save_outputs:
+          info_file_context.AddSrcJarSources(srcjar, extracted_files,
+                                             input_srcjars_dir)
       logging.info('Done extracting srcjars')
-      java_files.extend(jar_srcs)
+
+    if save_outputs and java_files:
+      info_file_context.SubmitFiles(java_files)
 
     if java_files:
       # Don't include the output directory in the initial set of args since it
       # being in a temp dir makes it unstable (breaks md5 stamping).
-      cmd = javac_cmd + ['-d', classes_dir]
+      cmd = list(javac_cmd)
+      cmd += ['-d', classes_dir]
+      cmd += ['-s', annotation_processor_outputs_dir]
 
       # Pass classpath and source paths as response files to avoid extremely
       # long command lines that are tedius to debug.
@@ -383,6 +406,8 @@ def _OnStaleMd5(options, javac_cmd, java_files, classpath):
       cmd += ['@' + java_files_rsp_path]
 
       logging.debug('Build command %s', cmd)
+      os.makedirs(classes_dir)
+      os.makedirs(annotation_processor_outputs_dir)
       build_utils.CheckOutput(
           cmd,
           print_stdout=options.chromium_code,
@@ -390,27 +415,21 @@ def _OnStaleMd5(options, javac_cmd, java_files, classpath):
       logging.info('Finished build command')
 
     if save_outputs:
-      # Creating the jar file takes the longest, start it first on a separate
-      # process to unblock the rest of the post-processing steps.
-      jar_file_worker = multiprocessing.Process(
-          target=_CreateJarFile,
-          args=(options.jar_path, options.provider_configurations,
-                options.additional_jar_files, classes_dir))
-      jar_file_worker.start()
+      annotation_processor_java_files = build_utils.FindInDirectory(
+          annotation_processor_outputs_dir)
+      if annotation_processor_java_files:
+        info_file_context.SubmitFiles(annotation_processor_java_files)
+
+      _CreateJarFile(options.jar_path, options.provider_configurations,
+                     options.additional_jar_files, classes_dir)
+
+      info_file_context.Commit(options.jar_path + '.info')
     else:
-      jar_file_worker = None
       build_utils.Touch(options.jar_path)
 
-    if save_outputs:
-      _CreateInfoFile(java_files, options.jar_path, options.chromium_code,
-                      srcjar_files, classes_dir, generated_java_dir,
-                      options.jar_info_exclude_globs)
-    else:
-      build_utils.Touch(options.jar_path + '.info')
-
-    if jar_file_worker:
-      jar_file_worker.join()
     logging.info('Completed all steps in _OnStaleMd5')
+  finally:
+    shutil.rmtree(temp_dir)
 
 
 def _ParseOptions(argv):
@@ -425,7 +444,7 @@ def _ParseOptions(argv):
   parser.add_option(
       '--generated-dir',
       help='Subdirectory within target_gen_dir to place extracted srcjars and '
-           'annotation processor output for codesearch to find.')
+      'annotation processor output for codesearch to find.')
   parser.add_option(
       '--bootclasspath',
       action='append',
@@ -444,7 +463,7 @@ def _ParseOptions(argv):
       '--processorpath',
       action='append',
       help='GN list of jars that comprise the classpath used for Annotation '
-           'Processors.')
+      'Processors.')
   parser.add_option(
       '--processor-arg',
       dest='processor_args',
@@ -455,14 +474,14 @@ def _ParseOptions(argv):
       dest='provider_configurations',
       action='append',
       help='File to specify a service provider. Will be included '
-           'in the jar under META-INF/services.')
+      'in the jar under META-INF/services.')
   parser.add_option(
       '--additional-jar-file',
       dest='additional_jar_files',
       action='append',
       help='Additional files to package into jar. By default, only Java .class '
-           'files are packaged into the jar. Files should be specified in '
-           'format <filename>:<path to be placed in jar>.')
+      'files are packaged into the jar. Files should be specified in '
+      'format <filename>:<path to be placed in jar>.')
   parser.add_option(
       '--jar-info-exclude-globs',
       help='GN list of exclude globs to filter from generated .info files.')
@@ -489,7 +508,7 @@ def _ParseOptions(argv):
       help='Additional arguments to pass to javac.')
 
   options, args = parser.parse_args(argv)
-  build_utils.CheckOptions(options, parser, required=('jar_path',))
+  build_utils.CheckOptions(options, parser, required=('jar_path', ))
 
   options.bootclasspath = build_utils.ParseGnList(options.bootclasspath)
   options.classpath = build_utils.ParseGnList(options.classpath)
@@ -517,22 +536,12 @@ def _ParseOptions(argv):
 
 
 def main(argv):
-  logging.basicConfig(
-      level=logging.INFO if os.environ.get('JAVAC_DEBUG') else logging.WARNING,
-      format='%(levelname).1s %(relativeCreated)6d %(message)s')
+  build_utils.InitLogging('JAVAC_DEBUG')
   colorama.init()
 
   argv = build_utils.ExpandFileArgs(argv)
   options, java_files = _ParseOptions(argv)
-
-  # Until we add a version of javac via DEPS, use errorprone with all checks
-  # disabled rather than javac. This ensures builds are reproducible.
-  # https://crbug.com/693079
-  # As of Jan 2019, on a z920, compiling chrome_java times:
-  # * With javac: 17 seconds
-  # * With errorprone (checks disabled): 20 seconds
-  # * With errorprone (checks enabled): 30 seconds
-  javac_path = build_utils.JAVA_PATH + 'c'
+  javac_path = build_utils.JAVAC_PATH
 
   javac_cmd = [
       javac_path,
@@ -560,8 +569,10 @@ def main(argv):
 
   if options.java_version:
     javac_cmd.extend([
-      '-source', options.java_version,
-      '-target', options.java_version,
+        '-source',
+        options.java_version,
+        '-target',
+        options.java_version,
     ])
   if options.java_version == '1.8':
     # Android's boot jar doesn't contain all java 8 classes.
@@ -594,7 +605,7 @@ def main(argv):
 
   # GN already knows of java_files, so listing them just make things worse when
   # they change.
-  depfile_deps = [javac_path] + classpath_inputs + options.java_srcjars
+  depfile_deps = classpath_inputs + options.java_srcjars
   input_paths = depfile_deps + java_files
   input_paths += [x[0] for x in options.additional_jar_files]
 
@@ -606,14 +617,13 @@ def main(argv):
   input_strings = javac_cmd + options.classpath + java_files
   if options.jar_info_exclude_globs:
     input_strings.append(options.jar_info_exclude_globs)
-  build_utils.CallAndWriteDepfileIfStale(
+  md5_check.CallAndWriteDepfileIfStale(
       lambda: _OnStaleMd5(options, javac_cmd, java_files, options.classpath),
       options,
       depfile_deps=depfile_deps,
       input_paths=input_paths,
       input_strings=input_strings,
       output_paths=output_paths)
-  logging.info('Script complete: %s', __file__)
 
 
 if __name__ == '__main__':

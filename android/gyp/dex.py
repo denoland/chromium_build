@@ -14,6 +14,7 @@ import tempfile
 import zipfile
 
 from util import build_utils
+from util import md5_check
 from util import zipalign
 
 sys.path.insert(1, os.path.join(os.path.dirname(__file__), os.path.pardir))
@@ -374,7 +375,6 @@ def _OnStaleMd5(changes, options, final_dex_inputs, dex_cmd):
 
     _CreateFinalDex(
         final_dex_inputs, options.output, tmp_dir, dex_cmd, options=options)
-  logging.debug('Dex finished for: %s', options.output)
 
 
 def MergeDexForIncrementalInstall(r8_jar_path, src_paths, dest_dex_jar):
@@ -389,9 +389,7 @@ def MergeDexForIncrementalInstall(r8_jar_path, src_paths, dest_dex_jar):
 
 
 def main(args):
-  logging.basicConfig(
-      level=logging.INFO if os.environ.get('DEX_DEBUG') else logging.WARNING,
-      format='%(levelname).1s %(relativeCreated)6d %(message)s')
+  build_utils.InitLogging('DEX_DEBUG')
   options = _ParseArgs(args)
 
   options.class_inputs += options.class_inputs_filearg
@@ -423,7 +421,7 @@ def main(args):
   if options.min_api:
     dex_cmd += ['--min-api', options.min_api]
 
-  build_utils.CallAndWriteDepfileIfStale(
+  md5_check.CallAndWriteDepfileIfStale(
       lambda changes: _OnStaleMd5(changes, options, final_dex_inputs, dex_cmd),
       options,
       depfile_deps=options.class_inputs_filearg + options.dex_inputs_filearg,

@@ -16,12 +16,14 @@ import argparse
 import collections
 import contextlib
 import filecmp
+import logging
 import multiprocessing.pool
 import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import textwrap
 import zipfile
 from xml.etree import ElementTree
@@ -31,10 +33,6 @@ from util import diff_utils
 from util import manifest_utils
 from util import resource_utils
 
-# Name of environment variable that can be used to force this script to
-# put temporary resource files into specific sub-directories, instead of
-# temporary ones.
-_ENV_DEBUG_VARIABLE = 'ANDROID_DEBUG_TEMP_RESOURCES_DIR'
 
 # Import jinja2 from third_party/jinja2
 sys.path.insert(1, os.path.join(build_utils.DIR_SOURCE_ROOT, 'third_party'))
@@ -259,23 +257,14 @@ def _ParseArgs(args):
   return options
 
 
-def _SortZip(original_path, sorted_path):
-  """Generate new zip archive by sorting all files in the original by name."""
-  with zipfile.ZipFile(sorted_path, 'w') as sorted_zip, \
-      zipfile.ZipFile(original_path, 'r') as original_zip:
-    for info in sorted(original_zip.infolist(), key=lambda i: i.filename):
-      sorted_zip.writestr(info, original_zip.read(info))
-
-
 def _IterFiles(root_dir):
   for root, _, files in os.walk(root_dir):
     for f in files:
       yield os.path.join(root, f)
 
 
-def _DuplicateZhResources(resource_dirs):
+def _DuplicateZhResources(resource_dirs, path_info):
   """Duplicate Taiwanese resources into Hong-Kong specific directory."""
-  renamed_paths = dict()
   for resource_dir in resource_dirs:
     # We use zh-TW resources for zh-HK (if we have zh-TW resources).
     for path in _IterFiles(resource_dir):
@@ -283,12 +272,12 @@ def _DuplicateZhResources(resource_dirs):
         hk_path = path.replace('zh-rTW', 'zh-rHK')
         build_utils.MakeDirectory(os.path.dirname(hk_path))
         shutil.copyfile(path, hk_path)
-        renamed_paths[os.path.relpath(hk_path, resource_dir)] = os.path.relpath(
-            path, resource_dir)
-  return renamed_paths
+        path_info.RegisterRename(
+            os.path.relpath(path, resource_dir),
+            os.path.relpath(hk_path, resource_dir))
 
 
-def _RenameLocaleResourceDirs(resource_dirs):
+def _RenameLocaleResourceDirs(resource_dirs, path_info):
   """Rename locale resource directories into standard names when necessary.
 
   This is necessary to deal with the fact that older Android releases only
@@ -317,11 +306,7 @@ def _RenameLocaleResourceDirs(resource_dirs):
 
   Args:
     resource_dirs: list of top-level resource directories.
-  Returns:
-    A dictionary mapping renamed paths to their original location
-    (e.g. '.../values-tl/strings.xml' -> ' .../values-fil/strings.xml').
   """
-  renamed_paths = dict()
   for resource_dir in resource_dirs:
     for path in _IterFiles(resource_dir):
       locale = resource_utils.FindLocaleInStringResourceFilePath(path)
@@ -342,9 +327,9 @@ def _RenameLocaleResourceDirs(resource_dirs):
           continue
         build_utils.MakeDirectory(os.path.dirname(path2))
         shutil.move(path, path2)
-        renamed_paths[os.path.relpath(path2, resource_dir)] = os.path.relpath(
-            path, resource_dir)
-  return renamed_paths
+        path_info.RegisterRename(
+            os.path.relpath(path, resource_dir),
+            os.path.relpath(path2, resource_dir))
 
 
 def _ToAndroidLocales(locale_whitelist, support_zh_hk):
@@ -377,12 +362,11 @@ def _ToAndroidLocales(locale_whitelist, support_zh_hk):
   return set(ret)
 
 
-def _MoveImagesToNonMdpiFolders(res_root):
+def _MoveImagesToNonMdpiFolders(res_root, path_info):
   """Move images from drawable-*-mdpi-* folders to drawable-* folders.
 
   Why? http://crbug.com/289843
   """
-  renamed_paths = dict()
   for src_dir_name in os.listdir(res_root):
     src_components = src_dir_name.split('-')
     if src_components[0] != 'drawable' or 'mdpi' not in src_components:
@@ -402,9 +386,9 @@ def _MoveImagesToNonMdpiFolders(res_root):
       dst_file = os.path.join(dst_dir, src_file_name)
       assert not os.path.lexists(dst_file)
       shutil.move(src_file, dst_file)
-      renamed_paths[os.path.relpath(dst_file, res_root)] = os.path.relpath(
-          src_file, res_root)
-  return renamed_paths
+      path_info.RegisterRename(
+          os.path.relpath(src_file, res_root),
+          os.path.relpath(dst_file, res_root))
 
 
 def _FixManifest(options, temp_dir):
@@ -519,8 +503,7 @@ def _CreateKeepPredicate(resource_blacklist_regex,
       build_utils.MatchesGlob(path, resource_blacklist_exceptions))
 
 
-def _ConvertToWebP(webp_binary, png_files):
-  renamed_paths = dict()
+def _ConvertToWebP(webp_binary, png_files, path_info):
   pool = multiprocessing.pool.ThreadPool(10)
   def convert_image(png_path_tuple):
     png_path, original_dir = png_path_tuple
@@ -530,34 +513,31 @@ def _ConvertToWebP(webp_binary, png_files):
         '-lossless', '-o', webp_path]
     subprocess.check_call(args)
     os.remove(png_path)
-    renamed_paths[os.path.relpath(webp_path, original_dir)] = os.path.relpath(
-        png_path, original_dir)
+    path_info.RegisterRename(
+        os.path.relpath(png_path, original_dir),
+        os.path.relpath(webp_path, original_dir))
 
   pool.map(convert_image, [f for f in png_files
                            if not _PNG_WEBP_BLACKLIST_PATTERN.match(f[0])])
   pool.close()
   pool.join()
-  return renamed_paths
 
 
-def _RemoveImageExtensions(directory):
+def _RemoveImageExtensions(directory, path_info):
   """Remove extensions from image files in the passed directory.
 
   This reduces binary size but does not affect android's ability to load the
   images.
-
-  Returns: dict[destination] -> source
   """
-  renamed_paths = {}
   for f in _IterFiles(directory):
     if (f.endswith('.png') or f.endswith('.webp')) and not f.endswith('.9.png'):
       path_with_extension = f
       path_no_extension = os.path.splitext(path_with_extension)[0]
       if path_no_extension != path_with_extension:
         shutil.move(path_with_extension, path_no_extension)
-        renamed_paths[os.path.relpath(path_no_extension, directory)] = (
-            os.path.relpath(path_with_extension, directory))
-  return renamed_paths
+        path_info.RegisterRename(
+            os.path.relpath(path_with_extension, directory),
+            os.path.relpath(path_no_extension, directory))
 
 
 def _CompileDeps(aapt2_path, dep_subdirs, temp_dir):
@@ -587,14 +567,7 @@ def _CompileDeps(aapt2_path, dep_subdirs, temp_dir):
         stderr_filter=lambda output:
             build_utils.FilterLines(
                 output, r'ignoring configuration .* for (styleable|attribute)'))
-
-    # Sorting the files in the partial ensures deterministic output from the
-    # aapt2 link step which uses order of files in the partial.
-    sorted_partial_path = os.path.join(partials_dir,
-                                       unique_name + '.sorted.zip')
-    _SortZip(partial_path, sorted_partial_path)
-
-    return sorted_partial_path
+    return partial_path
 
   partials = pool.map(compile_partial, enumerate(dep_subdirs))
   pool.close()
@@ -602,17 +575,12 @@ def _CompileDeps(aapt2_path, dep_subdirs, temp_dir):
   return partials
 
 
-def _CreateResourceInfoFile(renamed_paths, info_path, dependencies_res_zips):
-  lines = set()
+def _CreateResourceInfoFile(path_info, info_path, dependencies_res_zips):
   for zip_file in dependencies_res_zips:
     zip_info_file_path = zip_file + '.info'
     if os.path.exists(zip_info_file_path):
-      with open(zip_info_file_path, 'r') as zip_info_file:
-        lines.update(zip_info_file.readlines())
-  for dest, source in renamed_paths.iteritems():
-    lines.add('Rename:{},{}\n'.format(dest, source))
-  with open(info_path, 'w') as info_file:
-    info_file.writelines(sorted(lines))
+      path_info.MergeInfoFile(zip_info_file_path)
+  path_info.Write(info_path)
 
 
 def _RemoveUnwantedLocalizedStrings(dep_subdirs, options):
@@ -689,17 +657,20 @@ def _PackageApk(options, build):
   Returns:
     The manifest package name for the APK.
   """
+  logging.debug('Extracting resource .zips')
   dep_subdirs = resource_utils.ExtractDeps(options.dependencies_res_zips,
                                            build.deps_dir)
-  renamed_paths = dict()
-  renamed_paths.update(_DuplicateZhResources(dep_subdirs))
-  renamed_paths.update(_RenameLocaleResourceDirs(dep_subdirs))
+  logging.debug('Applying locale transformations')
+  path_info = resource_utils.ResourceInfoFile()
+  _DuplicateZhResources(dep_subdirs, path_info)
+  _RenameLocaleResourceDirs(dep_subdirs, path_info)
 
   _RemoveUnwantedLocalizedStrings(dep_subdirs, options)
 
   # Create a function that selects which resource files should be packaged
   # into the final output. Any file that does not pass the predicate will
   # be removed below.
+  logging.debug('Applying file-based blacklist')
   keep_predicate = _CreateKeepPredicate(options.resource_blacklist_regex,
                                         options.resource_blacklist_exceptions)
   png_paths = []
@@ -710,13 +681,12 @@ def _PackageApk(options, build):
       elif f.endswith('.png'):
         png_paths.append((f, directory))
   if png_paths and options.png_to_webp:
-    renamed_paths.update(_ConvertToWebP(options.webp_binary, png_paths))
+    logging.debug('Converting png->webp')
+    _ConvertToWebP(options.webp_binary, png_paths, path_info)
+  logging.debug('Applying drawable transformations')
   for directory in dep_subdirs:
-    renamed_paths.update(_MoveImagesToNonMdpiFolders(directory))
-    renamed_paths.update(_RemoveImageExtensions(directory))
-
-  _CreateResourceInfoFile(renamed_paths, build.info_path,
-                          options.dependencies_res_zips)
+    _MoveImagesToNonMdpiFolders(directory, path_info)
+    _RemoveImageExtensions(directory, path_info)
 
   link_command = [
       options.aapt2_path,
@@ -750,7 +720,7 @@ def _PackageApk(options, build):
 
   # Note: only one of --proto-format, --shared-lib or --app-as-shared-lib
   #       can be used with recent versions of aapt2.
-  if options.shared_resources and not options.proto_path:
+  if options.shared_resources:
     link_command.append('--shared-lib')
 
   if options.no_xml_namespaces:
@@ -788,12 +758,25 @@ def _PackageApk(options, build):
   for partial in partials:
     link_command += ['-R', partial]
 
-  if options.proto_path:
-    link_command += ['--proto-format', '-o', build.proto_path]
-  else:
-    link_command += ['-o', build.arsc_path]
+  # We always create a binary arsc file first, then convert to proto, so flags
+  # such as --shared-lib can be supported.
+  arsc_path = build.arsc_path
+  if arsc_path is None:
+    _, arsc_path = tempfile.mkstmp()
+  link_command += ['-o', build.arsc_path]
 
-  build_utils.CheckOutput(link_command, print_stdout=False, print_stderr=False)
+  logging.debug('Starting: aapt2 link')
+  link_proc = subprocess.Popen(link_command)
+
+  # Create .res.info file in parallel.
+  _CreateResourceInfoFile(path_info, build.info_path,
+                          options.dependencies_res_zips)
+  logging.debug('Created .res.info file')
+
+  exit_code = link_proc.wait()
+  logging.debug('Finished: aapt2 link')
+  if exit_code:
+    raise subprocess.CalledProcessError(exit_code, link_command)
 
   if options.proguard_file and (options.shared_resources
                                 or options.app_as_shared_lib):
@@ -808,10 +791,14 @@ def _PackageApk(options, build):
                   '''.format(package=desired_manifest_package_name)
       proguard_file.write(textwrap.dedent(keep_rule))
 
-  if options.proto_path and options.arsc_path:
-    build_utils.CheckOutput([
-        options.aapt2_path, 'convert', '-o', build.arsc_path, build.proto_path
-    ])
+  logging.debug('Running aapt2 convert')
+  build_utils.CheckOutput([
+      options.aapt2_path, 'convert', '--output-format', 'proto', '-o',
+      build.proto_path, build.arsc_path
+  ])
+
+  if build.arsc_path is None:
+    os.remove(arsc_path)
 
   if options.optimized_proto_path:
     _OptimizeApk(build.optimized_proto_path, options, build.temp_dir,
@@ -869,6 +856,7 @@ def _OptimizeApk(output, options, temp_dir, unoptimized_path, r_txt_path):
         '--resource-path-shortening-map', options.resources_path_map_out_path
     ]
 
+  logging.debug('Running aapt2 optimize')
   build_utils.CheckOutput(
       optimize_command, print_stdout=False, print_stderr=False)
 
@@ -933,11 +921,12 @@ def _WriteOutputs(options, build):
 
 
 def main(args):
+  build_utils.InitLogging('RESOURCE_DEBUG')
   args = build_utils.ExpandFileArgs(args)
   options = _ParseArgs(args)
 
   path = options.arsc_path or options.proto_path
-  debug_temp_resources_dir = os.environ.get(_ENV_DEBUG_VARIABLE)
+  debug_temp_resources_dir = os.environ.get('TEMP_RESOURCES_DIR')
   if debug_temp_resources_dir:
     path = os.path.join(debug_temp_resources_dir, os.path.basename(path))
   else:
@@ -986,15 +975,16 @@ def main(args):
     else:
       package_for_library = None
 
+    logging.debug('Creating R.srcjar')
     resource_utils.CreateRJavaFiles(
         build.srcjar_dir, package_for_library, build.r_txt_path,
         options.extra_res_packages, options.extra_r_text_files,
         rjava_build_options, options.srcjar_out, custom_root_package_name,
         grandparent_custom_package_name, options.extra_main_r_text_files)
-
     build_utils.ZipDir(build.srcjar_path, build.srcjar_dir)
 
     # Sanity check that the created resources have the expected package ID.
+    logging.debug('Performing sanity check')
     if options.package_id:
       expected_id = options.package_id
     elif options.shared_resources:
@@ -1008,6 +998,7 @@ def main(args):
       raise Exception(
           'Invalid package ID 0x%x (expected 0x%x)' % (package_id, expected_id))
 
+    logging.debug('Copying outputs')
     _WriteOutputs(options, build)
 
   if options.depfile:

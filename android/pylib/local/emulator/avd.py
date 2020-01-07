@@ -9,7 +9,6 @@ import os
 import socket
 import stat
 import subprocess
-import textwrap
 import threading
 
 from google.protobuf import text_format  # pylint: disable=import-error
@@ -20,11 +19,19 @@ from devil.utils import cmd_helper
 from devil.utils import timeout_retry
 from py_utils import tempfile_ext
 from pylib import constants
+from pylib.local.emulator import ini
 from pylib.local.emulator.proto import avd_pb2
 
 _ALL_PACKAGES = object()
 _DEFAULT_AVDMANAGER_PATH = os.path.join(constants.ANDROID_SDK_ROOT, 'tools',
                                         'bin', 'avdmanager')
+# Default to a 480dp mdpi screen (a relatively large phone).
+# See https://developer.android.com/training/multiscreen/screensizes
+# and https://developer.android.com/training/multiscreen/screendensities
+# for more information.
+_DEFAULT_SCREEN_DENSITY = 160
+_DEFAULT_SCREEN_HEIGHT = 960
+_DEFAULT_SCREEN_WIDTH = 480
 
 
 class AvdException(Exception):
@@ -227,19 +234,24 @@ class AvdConfig(object):
       with open(root_ini, 'a') as root_ini_file:
         root_ini_file.write('path.rel=avd/%s.avd\n' % self._config.avd_name)
 
+      height = (self._config.avd_settings.screen.height
+                or _DEFAULT_SCREEN_HEIGHT)
+      width = (self._config.avd_settings.screen.width or _DEFAULT_SCREEN_WIDTH)
+      density = (self._config.avd_settings.screen.density
+                 or _DEFAULT_SCREEN_DENSITY)
+
+      config_ini_contents = {
+          'hw.lcd.density': density,
+          'hw.lcd.height': height,
+          'hw.lcd.width': width,
+      }
       with open(config_ini, 'a') as config_ini_file:
-        config_ini_file.write(
-            textwrap.dedent("""\
-                disk.dataPartition.size=4G
-                hw.lcd.density=160
-                hw.lcd.height=960
-                hw.lcd.width=480
-                """))
+        ini.dump(config_ini_contents, config_ini_file)
 
       # Start & stop the AVD.
       self._Initialize()
-      instance = _AvdInstance(self._emulator_path, self._config.avd_name,
-                              self._emulator_home)
+      instance = _AvdInstance(self._emulator_path, self._emulator_home,
+                              self._config)
       instance.Start(read_only=False, snapshot_save=snapshot)
       device_utils.DeviceUtils(instance.serial).WaitUntilFullyBooted(
           timeout=180, retries=0)
@@ -389,8 +401,7 @@ class AvdConfig(object):
       An _AvdInstance.
     """
     self._Initialize()
-    return _AvdInstance(self._emulator_path, self._config.avd_name,
-                        self._emulator_home)
+    return _AvdInstance(self._emulator_path, self._emulator_home, self._config)
 
   def StartInstance(self):
     """Starts an AVD instance.
@@ -410,15 +421,16 @@ class _AvdInstance(object):
   but its other methods can be freely called.
   """
 
-  def __init__(self, emulator_path, avd_name, emulator_home):
+  def __init__(self, emulator_path, emulator_home, avd_config):
     """Create an _AvdInstance object.
 
     Args:
       emulator_path: path to the emulator binary.
-      avd_name: name of the AVD to run.
       emulator_home: path to the emulator home directory.
+      avd_config: AVD config proto.
     """
-    self._avd_name = avd_name
+    self._avd_config = avd_config
+    self._avd_name = avd_config.avd_name
     self._emulator_home = emulator_home
     self._emulator_path = emulator_path
     self._emulator_proc = None
@@ -430,6 +442,7 @@ class _AvdInstance(object):
 
   def Start(self, read_only=True, snapshot_save=False, window=False):
     """Starts the emulator running an instance of the given AVD."""
+
     with tempfile_ext.TemporaryFileName() as socket_path, (contextlib.closing(
         socket.socket(socket.AF_UNIX))) as sock:
       sock.bind(socket_path)
@@ -439,7 +452,19 @@ class _AvdInstance(object):
           self._avd_name,
           '-report-console',
           'unix:%s' % socket_path,
+          '-no-boot-anim',
       ]
+
+      android_avd_home = os.path.join(self._emulator_home, 'avd')
+      avd_dir = os.path.join(android_avd_home, '%s.avd' % self._avd_name)
+
+      hardware_qemu_path = os.path.join(avd_dir, 'hardware-qemu.ini')
+      if os.path.exists(hardware_qemu_path):
+        with open(hardware_qemu_path) as hardware_qemu_file:
+          hardware_qemu_contents = ini.load(hardware_qemu_file)
+      else:
+        hardware_qemu_contents = {}
+
       if read_only:
         emulator_cmd.append('-read-only')
       if not snapshot_save:
@@ -454,6 +479,27 @@ class _AvdInstance(object):
           raise AvdException('Emulator failed to start: DISPLAY not defined')
       else:
         emulator_cmd.append('-no-window')
+
+      hardware_qemu_contents['hw.sdCard'] = 'true'
+      if self._avd_config.avd_settings.sdcard.size:
+        sdcard_path = os.path.join(self._emulator_home, 'avd',
+                                   '%s.avd' % self._avd_name, 'cr-sdcard.img')
+        if not os.path.exists(sdcard_path):
+          mksdcard_path = os.path.join(
+              os.path.dirname(self._emulator_path), 'mksdcard')
+          mksdcard_cmd = [
+              mksdcard_path,
+              self._avd_config.avd_settings.sdcard.size,
+              sdcard_path,
+          ]
+          cmd_helper.RunCmd(mksdcard_cmd)
+
+        emulator_cmd.extend(['-sdcard', sdcard_path])
+        hardware_qemu_contents['hw.sdCard.path'] = sdcard_path
+
+      with open(hardware_qemu_path, 'w') as hardware_qemu_file:
+        ini.dump(hardware_qemu_contents, hardware_qemu_file)
+
       sock.listen(1)
 
       logging.info('Starting emulator.')

@@ -56,7 +56,10 @@ declare_args() {
 
   # Enables support for ThinLTO, which links 3x-10x faster than full LTO. See
   # also http://blog.llvm.org/2016/06/thinlto-scalable-and-incremental-lto.html
-  use_thin_lto = is_cfi || (is_android && is_official_build)
+  # Use it by default on official-optimized android builds, but not ARC since
+  # it's been seen to not play nicely with Chrome's clang.
+  use_thin_lto =
+      is_cfi || (is_android && target_os != "chromeos" && is_official_build)
 
   # Limit the number of jobs (threads/processes) the linker is allowed
   # to use (for linkers that support this).
@@ -200,7 +203,7 @@ declare_args() {
 # results independent of the checkout and build directory names, which
 # in turn is important for goma compile hit rate.
 # Setting this to true may make it harder to debug binaries on Linux, see
-# https://chromium.googlesource.com/chromium/src/+/master/docs/linux_debugging.md#Source-level-debug-with-fdebug_compilation_dir
+# https://chromium.googlesource.com/chromium/src/+/master/docs/linux/debugging.md#Source-level-debug-with-fdebug_compilation_dir
 # It's not clear if the crash server will correctly handle dSYMs with relative
 # paths, so we disable this feature for official benefit. The main benefit is
 # deterministic builds to reduce compile times, so this is less relevant for
@@ -222,8 +225,7 @@ if (strip_absolute_paths_from_debug_symbols_default) {
 # If it wasn't manually set, set to an appropriate default.
 assert(symbol_level >= -1 && symbol_level <= 2, "Invalid symbol_level")
 if (symbol_level == -1) {
-  if (is_android && !is_component_build &&
-      !(android_64bit_target_cpu && !build_apk_secondary_abi)) {
+  if (is_android && !is_component_build) {
     # Reduce symbol level when it will cause invalid elf files to be created
     # (due to file size). https://crbug.com/648948.
     symbol_level = 1
@@ -278,7 +280,6 @@ if (forbid_non_component_debug_builds) {
 # An exception is made when target_os == "chromeos" as we only use the Android
 # toolchain there to build relatively small binaries.
 assert(ignore_elf32_limitations || !is_android || target_os == "chromeos" ||
-           (android_64bit_target_cpu && !build_apk_secondary_abi) ||
            is_component_build || symbol_level < 2,
        "Android 32-bit non-component builds cannot have symbol_level=2 " +
            "due to 4GiB file size limit, see https://crbug.com/648948. " +

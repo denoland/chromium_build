@@ -39,6 +39,7 @@ gcc_toolchain("target") {
 
   toolchain_args = {
     cc_wrapper = ""
+    clang_use_chrome_plugins = false
     current_cpu = target_cpu
     current_os = "chromeos"
     is_clang = is_clang
@@ -82,6 +83,7 @@ gcc_toolchain("nacl_bootstrap") {
 
   toolchain_args = {
     cc_wrapper = ""
+    clang_use_chrome_plugins = false
     current_cpu = target_cpu
     current_os = "chromeos"
     is_clang = is_clang
@@ -105,6 +107,9 @@ gcc_toolchain("host") {
   if (cxx != get_path_info(cxx, "file") && string_replace(cxx, " ", "") == cxx) {
     cxx = rebase_path(cxx, root_build_dir)
   }
+  if (ar != get_path_info(ar, "file") && string_replace(ar, " ", "") == ar) {
+    ar = rebase_path(ar, root_build_dir)
+  }
   ld = cxx
   if (cros_host_ld != "") {
     ld = cros_host_ld
@@ -122,6 +127,7 @@ gcc_toolchain("host") {
 
   toolchain_args = {
     cc_wrapper = ""
+    clang_use_chrome_plugins = false
     is_clang = cros_host_is_clang
     current_cpu = host_cpu
     current_os = "linux"
@@ -143,6 +149,9 @@ gcc_toolchain("v8_snapshot") {
   if (cxx != get_path_info(cxx, "file") && string_replace(cxx, " ", "") == cxx) {
     cxx = rebase_path(cxx, root_build_dir)
   }
+  if (ar != get_path_info(ar, "file") && string_replace(ar, " ", "") == ar) {
+    ar = rebase_path(ar, root_build_dir)
+  }
   ld = cxx
   if (cros_v8_snapshot_ld != "") {
     ld = cros_v8_snapshot_ld
@@ -160,6 +169,7 @@ gcc_toolchain("v8_snapshot") {
 
   toolchain_args = {
     cc_wrapper = ""
+    clang_use_chrome_plugins = false
     is_clang = cros_v8_snapshot_is_clang
     if (target_cpu == "x86" || target_cpu == "arm" || target_cpu == "mipsel") {
       current_cpu = "x86"
