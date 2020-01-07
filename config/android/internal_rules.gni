@@ -3045,12 +3045,7 @@ if (enable_java_templates) {
     }
 
     _java_files = []
-    if (defined(invoker.java_files)) {
-      _java_files = invoker.java_files
-    } else if (defined(invoker.sources)) {
-      # TODO(crbug.com/917196): Migrate all usages of "java_files" to "sources".
-      # To support transition, use "sources" variable as valid substitute for
-      # "java_files" for now.
+    if (defined(invoker.sources)) {
       _java_files = invoker.sources
     }
     _srcjar_deps = []
