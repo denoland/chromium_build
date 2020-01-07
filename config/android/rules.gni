@@ -4,6 +4,7 @@
 
 # Do not add any imports to non-//build directories here.
 # Some projects (e.g. V8) do not have non-build directories DEPS'ed in.
+
 import("//build/config/android/config.gni")
 import("//build/config/android/internal_rules.gni")
 import("//build/config/clang/clang.gni")
@@ -13,6 +14,7 @@ import("//build/config/dcheck_always_on.gni")
 import("//build/config/python.gni")
 import("//build/config/zip.gni")
 import("//build/toolchain/toolchain.gni")
+
 assert(is_android)
 
 declare_args() {
@@ -4041,6 +4043,17 @@ if (enable_java_templates) {
   #       Whether to generate nano protos. If false, this will use the lite proto generator.
   #       Nano protos are deprecated, so please use lite new proto libraries.
   #
+  #   deps (optional)
+  #       Additional dependencies. Passed through to both the action and the
+  #       android_library targets.
+  #
+  #   import_dirs (optional)
+  #       A list of extra import directories to be passed to protoc compiler.
+  #       WARNING: This circumvents proto checkdeps, and should only be used
+  #       when needed, typically when proto files cannot cleanly import through
+  #       absolute paths, such as for third_party or generated .proto files.
+  #       http://crbug.com/691451 tracks fixing this.
+  #
   # Example:
   #  proto_java_library("foo_proto_java") {
   #    proto_path = "src/foo"
@@ -4097,6 +4110,16 @@ if (enable_java_templates) {
                "--srcjar",
                rebase_path(_srcjar_path, root_build_dir),
              ] + rebase_path(sources, root_build_dir)
+
+      if (defined(invoker.import_dirs)) {
+        foreach(_import_dir, invoker.import_dirs) {
+          args += [
+            "--import-dir",
+            rebase_path(_import_dir, root_build_dir),
+          ]
+        }
+      }
+
       if (_generate_nano) {
         args += [ "--nano" ]
       } else {
@@ -4114,6 +4137,9 @@ if (enable_java_templates) {
       deps = [
         _proto_runtime,
       ]
+      if (defined(invoker.deps)) {
+        deps += invoker.deps
+      }
     }
   }
 
