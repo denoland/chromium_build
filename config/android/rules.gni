@@ -3112,15 +3112,6 @@ if (enable_java_templates) {
       }
     }
 
-    if (_native_libs_deps != []) {
-      _create_stack_script_rule_name = "${_template_name}__stack_script"
-      _final_deps += [ ":${_create_stack_script_rule_name}" ]
-      stack_script(_create_stack_script_rule_name) {
-        stack_target_name = invoker.target_name
-        deps = _native_libs_deps
-      }
-    }
-
     _all_native_libs_deps = _native_libs_deps + _loadable_modules_deps +
                             _secondary_abi_native_libs_deps
     if (_all_native_libs_deps != []) {
