@@ -789,8 +789,7 @@ def _CreateJavaLibrariesList(library_paths):
   """Returns a java literal array with the "base" library names:
   e.g. libfoo.so -> foo
   """
-  names = ['"%s"' % os.path.basename(s)[3:-3] for s in library_paths]
-  return ('{%s}' % ','.join(sorted(set(names))))
+  return ('{%s}' % ','.join(['"%s"' % s[3:-3] for s in library_paths]))
 
 
 def _CreateJavaLocaleListFromAssets(assets, locale_paks):
