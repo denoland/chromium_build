@@ -95,3 +95,9 @@ if (host_os == "win") {
   stamp_command = "touch {{output}}"
   copy_command = "ln -f {{source}} {{output}} 2>/dev/null || (rm -rf {{output}} && cp -af {{source}} {{output}})"
 }
+
+# This variable is true if the current toolchain is one of the target toolchains.
+# This generally means "not the host toolchain", but in the case where we're
+# targeting the host it's true then as well.
+is_a_target_toolchain =
+    (current_toolchain != host_toolchain || default_toolchain == host_toolchain) && !is_nacl
