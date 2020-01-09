@@ -588,7 +588,7 @@ config("compiler") {
     cflags += [ "-flto=thin" ]
 
     if (target_os != "chromeos") {
-      cflags += [ "-fsplit-lto-unit" ]
+      cflags += [ "-fno-split-lto-unit" ]
     }
 
     if (thin_lto_enable_optimizations) {
