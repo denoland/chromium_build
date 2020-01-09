@@ -2418,7 +2418,21 @@ config("minimal_symbols") {
     if (!is_nacl || is_clang) {
       cflags += [ "-g1" ]
     }
+
+    # On Linux, debug info is usually embedded in the executable itself. We use
+    # the 'minimal_symbols' config for official builds to limit the size of this
+    # embedded debug info to keep the distributed binaries reasonably small.
+    # However when V8 is built with `clang -g1`, approximately 40MB of debug
+    # data is added to the final executable, mostly in the form of
+    # `DW_TAG_inlined_subroutine` tags. Leaving out those tags reduces the size
+    # of the debug sections to a much more reasonable 5MB while still providing
+    # pretty usable stack traces when the application crashes.
+    if (is_linux && is_clang) {
+      cflags += [ "-gno-inline-line-tables" ]
+    }
+
     ldflags = []
+
     if (is_android && is_clang) {
       # Android defaults to symbol_level=1 builds in production builds
       # (https://crbug.com/648948), but clang, unlike gcc, doesn't emit
