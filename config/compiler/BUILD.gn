@@ -168,6 +168,20 @@ declare_args() {
   # If true, linker crashes will be rerun with `--reproduce` which causes
   # a reproducer file to be saved.
   save_reproducers_on_lld_crash = false
+
+  # Limits the debuginfo that gets generated in "minimal symbols" mode to just
+  # line tables. This flag only has any effect when `symbol_level` is set to 1.
+  line_tables_only = false
+
+  # We use the 'minimal_symbols' config for official builds to limit the size of
+  # debug info to keep the distributed binaries reasonably small. However when
+  # V8 is built with `clang -g1`, approximately 40MB of debug data is added to
+  # the final executable, mostly in the form of `DW_TAG_inlined_subroutine` tags
+  # or its COFF equivalent. Leaving out those tags reduces the size of the debug
+  # sections to a much more reasonable 5MB while still providing pretty usable
+  # stack traces when the application crashes. This flag only has any effect
+  # when `symbol_level` is set to 1.
+  no_inline_line_tables = false
 }
 
 declare_args() {
@@ -2496,10 +2510,14 @@ config("symbols") {
 # This config guarantees to hold symbol for stack trace which are shown to user
 # when crash happens in unittests running on buildbot.
 config("minimal_symbols") {
-  if (is_win) {
-    # Functions, files, and line tables only.
-    cflags = []
+  # Functions, files, and line tables only.
+  cflags = []
 
+  if (is_clang && no_inline_line_tables) {
+    cflags += [ "-gno-inline-line-tables" ]
+  }
+
+  if (is_win) {
     if (is_clang && use_lld && use_ghash) {
       cflags += [ "-gcodeview-ghash" ]
       ldflags = [ "/DEBUG:GHASH" ]
@@ -2509,59 +2527,58 @@ config("minimal_symbols") {
 
     # All configs using /DEBUG should include this:
     configs = [ ":win_pdbaltpath" ]
+  } else if (is_mac && !use_dwarf5) {
+    # clang defaults to DWARF2 on macOS unless mac_deployment_target is
+    # at least 10.11.
+    # TODO(thakis): Remove this once mac_deployment_target is 10.11.
+    cflags += [ "-gdwarf-4" ]
+  } else if (!use_dwarf5 && !is_nacl && current_os != "aix") {
+    # On aix -gdwarf causes linker failures due to thread_local variables.
+    # Recent clang versions default to DWARF5 on Linux, and Android is about
+    # to switch. TODO: Adopt that in controlled way.
+    cflags += [ "-gdwarf-4" ]
+  } else if (use_dwarf5 && !is_nacl) {
+    cflags += [ "-gdwarf-5" ]
+  }
 
-    # Enable line tables for clang. MSVC doesn't have an equivalent option.
-    if (is_clang) {
-      # -gline-tables-only is the same as -g1, but clang-cl only exposes the
-      # former.
-      cflags += [ "-gline-tables-only" ]
-    }
-  } else {
-    cflags = []
-    if (is_mac && !use_dwarf5) {
-      # clang defaults to DWARF2 on macOS unless mac_deployment_target is
-      # at least 10.11.
-      # TODO(thakis): Remove this once mac_deployment_target is 10.11.
-      cflags += [ "-gdwarf-4" ]
-    } else if (!use_dwarf5 && !is_nacl && current_os != "aix") {
-      # On aix -gdwarf causes linker failures due to thread_local variables.
-      # Recent clang versions default to DWARF5 on Linux, and Android is about
-      # to switch. TODO: Adopt that in controlled way.
-      cflags += [ "-gdwarf-4" ]
-    }
+  if (!is_nacl && is_clang && !is_tsan && !is_asan && !is_win &&
+      !(is_ios && enable_ios_bitcode) && !line_tables_only) {
+    # See comment for -gdwarf-aranges in config("symbols").
+    cflags += [ "-gdwarf-aranges" ]
+  }
 
-    if (use_dwarf5 && !is_nacl) {
-      cflags += [ "-gdwarf-5" ]
-    }
+  if (is_android && is_clang && !line_tables_only) {
+    # Android defaults to symbol_level=1 builds, but clang, unlike gcc,
+    # doesn't emit DW_AT_linkage_name in -g1 builds.
+    # -fdebug-info-for-profiling enables that (and a bunch of other things we
+    # don't need), so that we get qualified names in stacks.
+    # TODO(thakis): Consider making clang emit DW_AT_linkage_name in -g1 mode;
+    #               failing that consider doing this on non-Android too.
+    cflags += [ "-fdebug-info-for-profiling" ]
+  }
 
+  if ((is_nacl || is_win) && !is_clang) {
     # The gcc-based nacl compilers don't support -fdebug-compilation-dir (see
     # elsewhere in this file), so they can't have build-dir-independent output.
     # Disable symbols for nacl object files to get deterministic,
     # build-directory-independent output. pnacl and nacl-clang do support that
     # flag, so we can use use -g1 for pnacl and nacl-clang compiles.
     # gcc nacl is is_nacl && !is_clang, pnacl and nacl-clang are && is_clang.
-    if (!is_nacl || is_clang) {
-      cflags += [ "-g1" ]
-    }
+    # Windows: MSVC doesn't have an equivalent option.
+  } else if (is_win || line_tables_only) {
+    # On Mac/Linux using Clang/LLVM 15, the -gline-tables-only flag must be the
+    # **last** -gxxx flag. All other flags like -gno-inline-line-tables and
+    # -gno-column-info must come first, otherwise full debuginfo is produced.
+    # On Windows, `clang-cl` does not support the -g1 flag.
+    cflags += [ "-gline-tables-only" ]
+  } else {
+    cflags += [ "-g1" ]
+  }
 
-    if (!is_nacl && is_clang && !is_tsan && !is_asan) {
-      # See comment for -gdwarf-aranges in config("symbols").
-      cflags += [ "-gdwarf-aranges" ]
-    }
-
-    ldflags = []
-    if (is_android && is_clang) {
-      # Android defaults to symbol_level=1 builds, but clang, unlike gcc,
-      # doesn't emit DW_AT_linkage_name in -g1 builds.
-      # -fdebug-info-for-profiling enables that (and a bunch of other things we
-      # don't need), so that we get qualified names in stacks.
-      # TODO(thakis): Consider making clang emit DW_AT_linkage_name in -g1 mode;
-      #               failing that consider doing this on non-Android too.
-      cflags += [ "-fdebug-info-for-profiling" ]
-    }
-
+  if (!is_win) {
     asmflags = cflags
   }
+
   rustflags = [ "-Cdebuginfo=1" ]
 }
 
