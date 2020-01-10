@@ -4559,11 +4559,6 @@ if (enable_java_templates) {
     # Prevent "unused variable".
     not_needed([ "_enable_multidex" ])
 
-    # TODO: Remove downstream use of static_library_proguard_disabled.
-    if (defined(invoker.static_library_proguard_disabled)) {
-      not_needed(invoker, [ "static_library_proguard_disabled" ])
-    }
-
     if (_proguard_enabled) {
       _uses_static_library_synchronized_proguard =
           defined(invoker.static_library_synchronized_proguard) &&
