@@ -2245,15 +2245,11 @@ config("afdo") {
       rebased_clang_sample_profile =
           rebase_path(_clang_sample_profile, root_build_dir)
       cflags += [ "-fprofile-sample-use=${rebased_clang_sample_profile}" ]
-      inputs = [
-        _clang_sample_profile,
-      ]
+      inputs = [ _clang_sample_profile ]
     }
   } else if (auto_profile_path != "" && is_a_target_toolchain) {
     cflags = [ "-fauto-profile=${auto_profile_path}" ]
-    inputs = [
-      auto_profile_path,
-    ]
+    inputs = [ auto_profile_path ]
   }
 }
 
@@ -2527,9 +2523,7 @@ if (is_win || is_android || is_chromeos) {
           "/ignore:4065",
         ]
       }
-      inputs = [
-        chrome_orderfile_path,
-      ]
+      inputs = [ chrome_orderfile_path ]
     }
   }
 }
