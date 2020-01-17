@@ -253,7 +253,11 @@ config("common_sanitizer_flags") {
 
   if (using_sanitizer) {
     assert(is_clang, "sanitizers only supported with clang")
-    assert(!is_official_build, "sanitizers not supported in official builds")
+
+    # Allow non-default toolchains to enable sanitizers in toolchain_args even
+    # in official builds.
+    assert(current_toolchain != default_toolchain || !is_official_build,
+           "sanitizers not supported in official builds")
 
     cflags += [
       # Column info in debug data confuses Visual Studio's debugger, so don't
