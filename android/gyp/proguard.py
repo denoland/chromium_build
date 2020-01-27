@@ -5,6 +5,7 @@
 # found in the LICENSE file.
 
 import argparse
+import itertools
 import os
 import re
 import shutil
@@ -111,8 +112,7 @@ def _ParseOptions():
   group.add_argument('--r8-path', help='Path to the R8.jar to use.')
   parser.add_argument(
       '--input-paths', required=True, help='GN-list of .jar files to optimize.')
-  parser.add_argument(
-      '--output-path', required=True, help='Path to the generated .jar file.')
+  parser.add_argument('--output-path', help='Path to the generated .jar file.')
   parser.add_argument(
       '--proguard-configs',
       action='append',
@@ -160,8 +160,33 @@ def _ParseOptions():
       '--disable-checkdiscard',
       action='store_true',
       help='Disable -checkdiscard directives')
+  parser.add_argument(
+      '--feature-jars',
+      action='append',
+      help='GN list of path to jars which comprise the corresponding feature.')
+  parser.add_argument(
+      '--dex-dest',
+      action='append',
+      dest='dex_dests',
+      help='Destination for dex file of the corresponding feature.')
+  parser.add_argument(
+      '--feature-name',
+      action='append',
+      dest='feature_names',
+      help='The name of the feature module.')
+  parser.add_argument(
+      '--stamp',
+      help='File to touch upon success. Mutually exclusive with --output-path')
 
   options = parser.parse_args(args)
+
+  if options.feature_names:
+    if options.output_path:
+      parser.error('Feature splits cannot specify an output in GN.')
+    if not options.stamp:
+      parser.error('Feature splits require a stamp file as output.')
+  elif not options.output_path:
+    parser.error('Output path required when feature splits aren\'t used')
 
   if options.main_dex_rules_path and not options.r8_path:
     parser.error('R8 must be enabled to pass main dex rules.')
@@ -177,6 +202,17 @@ def _ParseOptions():
   options.input_paths = build_utils.ParseGnList(options.input_paths)
   options.extra_mapping_output_paths = build_utils.ParseGnList(
       options.extra_mapping_output_paths)
+
+  if options.feature_names:
+    if 'base' not in options.feature_names:
+      parser.error('"base" feature required when feature arguments are used.')
+    if len(options.feature_names) != len(options.feature_jars) or len(
+        options.feature_names) != len(options.dex_dests):
+      parser.error('Invalid feature argument lengths.')
+
+    options.feature_jars = [
+        build_utils.ParseGnList(x) for x in options.feature_jars
+    ]
 
   return options
 
@@ -199,6 +235,36 @@ https://chromium.googlesource.com/chromium/src/+/HEAD/chrome/android/java/README
       f.write(msg)
 
 
+class _DexPathContext(object):
+  def __init__(self, name, output_path, input_jars, work_dir):
+    self.name = name
+    self.input_paths = input_jars
+    self._final_output_path = output_path
+    self._temporary_dir = os.path.join(work_dir, name)
+
+  def OutputPath(self):
+    if not os.path.exists(self._temporary_dir):
+      os.mkdir(self._temporary_dir)
+    return self._temporary_dir
+
+  def Commit(self):
+    found_files = build_utils.FindInDirectory(self._temporary_dir)
+    if self._final_output_path.endswith('.dex'):
+      if len(found_files) != 1:
+        raise Exception('Expected exactly 1 dex file output, found: {}'.format(
+            len(found_files)))
+      shutil.move(found_files[0], self._final_output_path)
+    else:
+      if len(found_files) == 0:
+        raise Exception('Missing dex outputs in {}'.format(self._temporary_dir))
+      # Add to .jar using Python rather than having R8 output to a .zip directly
+      # in order to disable compression of the .jar, saving ~500ms.
+      tmp_jar_output = self._temporary_dir + '.jar'
+      build_utils.DoZip(
+          found_files, tmp_jar_output, base_dir=self._temporary_dir)
+      shutil.move(tmp_jar_output, self._final_output_path)
+
+
 def _OptimizeWithR8(options,
                     config_paths,
                     libraries,
@@ -219,6 +285,20 @@ def _OptimizeWithR8(options,
     tmp_output = os.path.join(tmp_dir, 'r8out')
     os.mkdir(tmp_output)
 
+    feature_contexts = []
+    if options.feature_names:
+      for name, dest_dex, input_paths in itertools.izip(
+          options.feature_names, options.dex_dests, options.feature_jars):
+        feature_context = _DexPathContext(name, dest_dex, input_paths,
+                                          tmp_output)
+        if name == 'base':
+          base_dex_context = feature_context
+        else:
+          feature_contexts.append(feature_context)
+    else:
+      base_dex_context = _DexPathContext('base', options.output_path,
+                                         options.input_paths, tmp_output)
+
     cmd = [
         build_utils.JAVA_PATH,
         '-jar',
@@ -226,7 +306,7 @@ def _OptimizeWithR8(options,
         '--no-desugaring',
         '--no-data-resources',
         '--output',
-        tmp_output,
+        base_dex_context.OutputPath(),
         '--pg-map-output',
         tmp_mapping_path,
     ]
@@ -244,7 +324,19 @@ def _OptimizeWithR8(options,
       for main_dex_rule in options.main_dex_rules_path:
         cmd += ['--main-dex-rules', main_dex_rule]
 
-    cmd += options.input_paths
+    input_code_paths = set()
+    for feature in feature_contexts:
+      for feature_input_jar in feature.input_paths:
+        if feature_input_jar not in base_dex_context.input_paths:
+          input_code_paths.add(feature_input_jar)
+          cmd += [
+              '--feature-jar', feature_input_jar + ':' + feature.OutputPath()
+          ]
+
+    input_code_paths.update(base_dex_context.input_paths)
+    assert input_code_paths == set(options.input_paths), (
+        'Sum of feature input jars not equal to expected runtime classpath.')
+    cmd += base_dex_context.input_paths
 
     env = os.environ.copy()
     stderr_filter = lambda l: re.sub(r'.*_JAVA_OPTIONS.*\n?', '', l)
@@ -261,23 +353,18 @@ def _OptimizeWithR8(options,
           'android/docs/java_optimization.md#Debugging-common-failures\n'))
       raise ProguardProcessError(err, debugging_link)
 
-    found_files = build_utils.FindInDirectory(tmp_output)
-    if not options.output_path.endswith('.dex'):
-      # Add to .jar using Python rather than having R8 output to a .zip directly
-      # in order to disable compression of the .jar, saving ~500ms.
-      tmp_jar_output = tmp_output + '.jar'
-      build_utils.DoZip(found_files, tmp_jar_output, base_dir=tmp_output)
-      shutil.move(tmp_jar_output, options.output_path)
-    else:
-      if len(found_files) > 1:
-        raise Exception('Too many files created: {}'.format(found_files))
-      shutil.move(found_files[0], options.output_path)
+    base_dex_context.Commit()
+    if options.feature_names:
+      for feature in feature_contexts:
+        feature.Commit()
 
     with open(options.mapping_output, 'w') as out_file, \
         open(tmp_mapping_path) as in_file:
       # Mapping files generated by R8 include comments that may break
       # some of our tooling so remove those (specifically: apkanalyzer).
       out_file.writelines(l for l in in_file if not l.startswith('#'))
+
+  return input_code_paths
 
 
 def _OptimizeWithProguard(options,
@@ -459,23 +546,29 @@ def main():
                              options.output_config,
                              options.proguard_expectations_failure_file)
 
+  inputs = options.proguard_configs + libraries
   if options.r8_path:
-    _OptimizeWithR8(options, proguard_configs, libraries, dynamic_config_data,
-                    print_stdout)
+    inputs += _OptimizeWithR8(options, proguard_configs, libraries,
+                              dynamic_config_data, print_stdout)
   else:
     _OptimizeWithProguard(options, proguard_configs, libraries,
                           dynamic_config_data, print_stdout)
+    inputs += options.input_paths
 
   # After ProGuard / R8 has run:
   for output in options.extra_mapping_output_paths:
     shutil.copy(options.mapping_output, output)
 
-  inputs = options.proguard_configs + options.input_paths + libraries
   if options.apply_mapping:
     inputs.append(options.apply_mapping)
 
+  output_path = options.output_path
+  if options.stamp:
+    build_utils.Touch(options.stamp)
+    output_path = options.stamp
+
   build_utils.WriteDepfile(
-      options.depfile, options.output_path, inputs=inputs, add_pydeps=False)
+      options.depfile, output_path, inputs=inputs, add_pydeps=False)
 
 
 if __name__ == '__main__':
