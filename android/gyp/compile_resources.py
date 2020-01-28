@@ -697,7 +697,8 @@ def _PackageApk(options, build):
                                            build.deps_dir)
   logging.debug('Applying locale transformations')
   path_info = resource_utils.ResourceInfoFile()
-  _DuplicateZhResources(dep_subdirs, path_info)
+  if options.support_zh_hk:
+    _DuplicateZhResources(dep_subdirs, path_info)
   _RenameLocaleResourceDirs(dep_subdirs, path_info)
 
   _RemoveUnwantedLocalizedStrings(dep_subdirs, options)
