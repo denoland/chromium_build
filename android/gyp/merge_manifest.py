@@ -31,10 +31,8 @@ _MANIFEST_MERGER_JARS = [
 @contextlib.contextmanager
 def _ProcessManifest(manifest_path, min_sdk_version, target_sdk_version,
                      max_sdk_version, manifest_package):
-  """Patches an Android manifest to always include the 'tools' namespace
-  declaration, as it is not propagated by the manifest merger from the SDK.
-
-  See https://issuetracker.google.com/issues/63411481
+  """Patches an Android manifest's package and performs assertions to ensure
+  correctness for the manifest.
   """
   doc, manifest, _ = manifest_utils.ParseManifest(manifest_path)
   manifest_utils.AssertUsesSdk(manifest, min_sdk_version, target_sdk_version,
