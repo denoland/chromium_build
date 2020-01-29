@@ -1349,6 +1349,9 @@ if (enable_java_templates) {
             deps += [ ":${_main_dex_list_target_name}" ]
             inputs += [ _main_dex_list_path ]
           }
+        } else if (defined(invoker.enable_library_multidex) &&
+                   invoker.enable_library_multidex) {
+          args += [ "--multi-dex" ]
         }
 
         if (defined(invoker.input_dex_filearg)) {
@@ -3400,9 +3403,10 @@ if (enable_java_templates) {
             output = _dex_path
             deps = [ ":$_process_prebuilt_target_name" ]
 
-            # Should never need multidex when compiling individual libraries.
-            # Disabling multidex saves on having to create a main_dex_list.
+            # For library targets, we do not need a proper main dex list, but do
+            # need to allow multiple dex files.
             enable_multidex = false
+            enable_library_multidex = true
           }
           _accumulated_public_deps += [ ":${target_name}__dex" ]
         }
