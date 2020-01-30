@@ -10,6 +10,7 @@ import("//build/config/coverage/coverage.gni")
 import("//build/config/dcheck_always_on.gni")
 import("//build/config/python.gni")
 import("//build/config/sanitizers/sanitizers.gni")
+import("//build/toolchain/goma.gni")
 import("//build/util/generate_wrapper.gni")
 import("//build_overrides/build.gni")
 assert(is_android)
@@ -2729,6 +2730,9 @@ if (enable_java_templates) {
         "--processorpath=@FileArg($_rebased_build_config:javac:processor_classpath)",
         "--processors=@FileArg($_rebased_build_config:javac:processor_classes)",
       ]
+      if (use_java_goma) {
+        args += [ "--gomacc-path=$goma_dir/gomacc" ]
+      }
       if (defined(invoker.srcjar_filearg)) {
         args += [ "--java-srcjars=${invoker.srcjar_filearg}" ]
       }
