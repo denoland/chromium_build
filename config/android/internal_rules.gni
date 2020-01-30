@@ -1757,8 +1757,9 @@ if (enable_java_templates) {
       args = [
         "--depfile",
         rebase_path(depfile, root_build_dir),
-        "--build-vars",
-        rebase_path(android_build_vars, root_build_dir),
+        "--android-sdk-root",
+        rebase_path(manifest_merger_sdk_root, root_build_dir),
+        "--android-sdk-tools-version-suffix=${manifest_merger_sdk_version}",
         "--root-manifest",
         rebase_path(invoker.input_manifest, root_build_dir),
         "--output",
