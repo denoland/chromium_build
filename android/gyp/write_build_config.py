@@ -186,6 +186,14 @@ file corresponding to the content of `deps_info['r_text']`. This is *always*
 generated from the content of `deps_info['r_text']` by the
 `build/android/gyp/process_resources.py` script.
 
+* `deps_info['static_library_dependent_classpath_configs']`:
+Sub dictionary mapping .build_config paths to lists of jar files. For static
+library APKs, this defines which input jars belong to each
+static_library_dependent_target.
+
+* `deps_info['static_library_proguard_mapping_output_paths']`:
+Additional paths to copy the ProGuard mapping file to for static library
+APKs.
 
 ## <a name="target_android_assets">Target type `android_assets`</a>:
 
@@ -789,7 +797,8 @@ def _CreateJavaLibrariesList(library_paths):
   """Returns a java literal array with the "base" library names:
   e.g. libfoo.so -> foo
   """
-  return ('{%s}' % ','.join(['"%s"' % s[3:-3] for s in library_paths]))
+  names = ['"%s"' % os.path.basename(s)[3:-3] for s in library_paths]
+  return ('{%s}' % ','.join(sorted(set(names))))
 
 
 def _CreateJavaLocaleListFromAssets(assets, locale_paks):

@@ -38,6 +38,17 @@ from util import resource_utils
 sys.path.insert(1, os.path.join(build_utils.DIR_SOURCE_ROOT, 'third_party'))
 from jinja2 import Template # pylint: disable=F0401
 
+# Make sure the pb2 files are able to import google.protobuf
+sys.path.insert(
+    1,
+    os.path.join(build_utils.DIR_SOURCE_ROOT, 'third_party', 'protobuf',
+                 'python'))
+from proto import Resources_pb2
+
+_JETIFY_SCRIPT_PATH = os.path.join(build_utils.DIR_SOURCE_ROOT, 'third_party',
+                                   'jetifier_standalone', 'bin',
+                                   'jetifier-standalone')
+
 # Pngs that we shouldn't convert to webp. Please add rationale when updating.
 _PNG_WEBP_BLACKLIST_PATTERN = re.compile('|'.join([
     # Crashes on Galaxy S5 running L (https://crbug.com/807059).
@@ -523,6 +534,29 @@ def _ConvertToWebP(webp_binary, png_files, path_info):
   pool.join()
 
 
+def _JetifyArchive(dep_path, output_path):
+  """Runs jetify script on a directory.
+
+  This converts resources to reference androidx over android support libraries.
+  Directories will be put in a zip file, jetified, then unzipped as jetify
+  only runs on archives.
+  """
+  # Jetify script only works on archives.
+  with tempfile.NamedTemporaryFile() as temp_archive:
+    build_utils.ZipDir(temp_archive.name, dep_path)
+
+    # Use -l error to avoid warnings when nothing is jetified.
+    jetify_cmd = [
+        _JETIFY_SCRIPT_PATH, '-i', temp_archive.name, '-o', temp_archive.name,
+        '-l', 'error'
+    ]
+    subprocess.check_call(jetify_cmd)
+    with zipfile.ZipFile(temp_archive.name) as zf:
+      zf.extractall(output_path)
+
+  return output_path
+
+
 def _RemoveImageExtensions(directory, path_info):
   """Remove extensions from image files in the passed directory.
 
@@ -556,6 +590,14 @@ def _CompileDeps(aapt2_path, dep_subdirs, temp_dir):
     basename = os.path.basename(dep_path)
     unique_name = '{}_{}'.format(index, basename)
     partial_path = os.path.join(partials_dir, '{}.zip'.format(unique_name))
+
+    jetify_dir = os.path.join(partials_dir, 'jetify')
+    build_utils.MakeDirectory(jetify_dir)
+    # TODO (bjoyce): Enable when androidx is ready.
+    # working_jetify_path = os.path.join(jetify_dir, 'jetify_' + partial_path)
+    # jetified_dep = _JetifyArchive(dep_path, working_jetify_path)
+    # dep_path = jetified_dep
+
     compile_command = (
         partial_compile_command + ['--dir', dep_path, '-o', partial_path])
 
@@ -573,6 +615,86 @@ def _CompileDeps(aapt2_path, dep_subdirs, temp_dir):
   pool.close()
   pool.join()
   return partials
+
+
+def _ProcessProtoItem(item):
+  if not item.HasField('ref'):
+    return
+
+  # If this is a dynamic attribute (type ATTRIBUTE, package ID 0), hardcode
+  # the package to 0x02.
+  if item.ref.type == Resources_pb2.Reference.ATTRIBUTE and not (
+      item.ref.id & 0xff000000):
+    item.ref.id |= 0x02000000
+    item.ref.ClearField('is_dynamic')
+
+
+def _ProcessProtoValue(value):
+  if value.HasField('item'):
+    _ProcessProtoItem(value.item)
+  else:
+    compound_value = value.compound_value
+    if compound_value.HasField('style'):
+      for entry in compound_value.style.entry:
+        _ProcessProtoItem(entry.item)
+    elif compound_value.HasField('array'):
+      for element in compound_value.array.element:
+        _ProcessProtoItem(element.item)
+    elif compound_value.HasField('plural'):
+      for entry in compound_value.plural.entry:
+        _ProcessProtoItem(entry.item)
+
+
+def _ProcessProtoXmlNode(xml_node):
+  if not xml_node.HasField('element'):
+    return
+
+  for attribute in xml_node.element.attribute:
+    _ProcessProtoItem(attribute.compiled_item)
+
+  for child in xml_node.element.child:
+    _ProcessProtoXmlNode(child)
+
+
+def _HardcodeSharedLibraryDynamicAttributes(zip_path):
+  """Hardcodes the package IDs of dynamic attributes to 0x02.
+
+  This is a workaround for b/147674078, which affects Android versions pre-N.
+
+  Args:
+    zip_path: Path to proto APK file.
+  """
+  with build_utils.TempDir() as tmp_dir:
+    build_utils.ExtractAll(zip_path, path=tmp_dir)
+
+    # First process the resources file.
+    table = Resources_pb2.ResourceTable()
+    with open(os.path.join(tmp_dir, 'resources.pb')) as f:
+      table.ParseFromString(f.read())
+
+    for package in table.package:
+      for _type in package.type:
+        for entry in _type.entry:
+          for config_value in entry.config_value:
+            _ProcessProtoValue(config_value.value)
+
+    with open(os.path.join(tmp_dir, 'resources.pb'), 'w') as f:
+      f.write(table.SerializeToString())
+
+    # Next process all the XML files.
+    xml_files = build_utils.FindInDirectory(tmp_dir, '*.xml')
+    for xml_file in xml_files:
+      xml_node = Resources_pb2.XmlNode()
+      with open(xml_file) as f:
+        xml_node.ParseFromString(f.read())
+
+      _ProcessProtoXmlNode(xml_node)
+
+      with open(xml_file, 'w') as f:
+        f.write(xml_node.SerializeToString())
+
+    # Overwrite the original zip file.
+    build_utils.ZipDir(zip_path, tmp_dir)
 
 
 def _CreateResourceInfoFile(path_info, info_path, dependencies_res_zips):
@@ -662,7 +784,8 @@ def _PackageApk(options, build):
                                            build.deps_dir)
   logging.debug('Applying locale transformations')
   path_info = resource_utils.ResourceInfoFile()
-  _DuplicateZhResources(dep_subdirs, path_info)
+  if options.support_zh_hk:
+    _DuplicateZhResources(dep_subdirs, path_info)
   _RenameLocaleResourceDirs(dep_subdirs, path_info)
 
   _RemoveUnwantedLocalizedStrings(dep_subdirs, options)
@@ -797,6 +920,16 @@ def _PackageApk(options, build):
       build.proto_path, build.arsc_path
   ])
 
+  # Workaround for b/147674078. This is only needed for WebLayer and does not
+  # affect WebView usage, since WebView does not used dynamic attributes.
+  if options.shared_resources:
+    logging.debug('Hardcoding dynamic attributes')
+    _HardcodeSharedLibraryDynamicAttributes(build.proto_path)
+    build_utils.CheckOutput([
+        options.aapt2_path, 'convert', '--output-format', 'binary', '-o',
+        build.arsc_path, build.proto_path
+    ])
+
   if build.arsc_path is None:
     os.remove(arsc_path)
 
@@ -844,13 +977,13 @@ def _OptimizeApk(output, options, temp_dir, unoptimized_path, r_txt_path):
         config.write('{}#no_obfuscate\n'.format(resource))
 
     optimize_command += [
-        '--enable-resource-obfuscation',
+        '--collapse-resource-names',
         '--resources-config-path',
         gen_config_path,
     ]
 
   if options.short_resource_paths:
-    optimize_command += ['--enable-resource-path-shortening']
+    optimize_command += ['--shorten-resource-paths']
   if options.resources_path_map_out_path:
     optimize_command += [
         '--resource-path-shortening-map', options.resources_path_map_out_path

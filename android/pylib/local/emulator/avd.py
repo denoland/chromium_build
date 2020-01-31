@@ -241,6 +241,7 @@ class AvdConfig(object):
                  or _DEFAULT_SCREEN_DENSITY)
 
       config_ini_contents = {
+          'disk.dataPartition.size': '4G',
           'hw.lcd.density': density,
           'hw.lcd.height': height,
           'hw.lcd.width': width,
@@ -440,7 +441,11 @@ class _AvdInstance(object):
   def __str__(self):
     return '%s|%s' % (self._avd_name, (self._emulator_serial or id(self)))
 
-  def Start(self, read_only=True, snapshot_save=False, window=False):
+  def Start(self,
+            read_only=True,
+            snapshot_save=False,
+            window=False,
+            writable_system=False):
     """Starts the emulator running an instance of the given AVD."""
 
     with tempfile_ext.TemporaryFileName() as socket_path, (contextlib.closing(
@@ -469,6 +474,9 @@ class _AvdInstance(object):
         emulator_cmd.append('-read-only')
       if not snapshot_save:
         emulator_cmd.append('-no-snapshot-save')
+      if writable_system:
+        emulator_cmd.append('-writable-system')
+
       emulator_env = {}
       if self._emulator_home:
         emulator_env['ANDROID_EMULATOR_HOME'] = self._emulator_home
@@ -530,9 +538,13 @@ class _AvdInstance(object):
     """Stops the emulator process."""
     if self._emulator_proc:
       if self._emulator_proc.poll() is None:
-        self._emulator_proc.terminate()
+        if self._emulator_serial:
+          device_utils.DeviceUtils(self._emulator_serial).adb.Emu('kill')
+        else:
+          self._emulator_proc.terminate()
         self._emulator_proc.wait()
       self._emulator_proc = None
+
     if self._sink:
       self._sink.close()
       self._sink = None

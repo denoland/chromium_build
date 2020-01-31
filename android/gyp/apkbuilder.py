@@ -238,7 +238,11 @@ def _AddNativeLibraries(out_apk, native_libs, android_abi, uncompress,
         if has_crazy_linker and not has_monochrome:
           basename = 'crazy.' + basename
 
-    apk_path = 'lib/%s/%s' % (android_abi, basename)
+    lib_android_abi = android_abi
+    if path.startswith('android_clang_arm64_hwasan/'):
+      lib_android_abi = 'arm64-v8a-hwasan'
+
+    apk_path = 'lib/%s/%s' % (lib_android_abi, basename)
     zipalign.AddToZipHermetic(
         out_apk,
         apk_path,
@@ -319,13 +323,13 @@ def main(args):
     with zipfile.ZipFile(options.resource_apk) as resource_apk, \
          zipfile.ZipFile(f, 'w') as out_apk:
 
-      def add_to_zip(zip_path, data, compress=True):
+      def add_to_zip(zip_path, data, compress=True, alignment=4):
         zipalign.AddToZipHermetic(
             out_apk,
             zip_path,
             data=data,
             compress=compress,
-            alignment=0 if compress and not fast_align else 4)
+            alignment=0 if compress and not fast_align else alignment)
 
       def copy_resource(zipinfo, out_dir=''):
         add_to_zip(
@@ -351,12 +355,20 @@ def main(args):
       # 3. Dex files
       logging.debug('Adding classes.dex')
       if options.dex_file:
-        with zipfile.ZipFile(options.dex_file, 'r') as dex_zip:
-          for dex in (d for d in dex_zip.namelist() if d.endswith('.dex')):
+        with open(options.dex_file) as dex_file_obj:
+          if options.dex_file.endswith('.dex'):
+            # This is the case for incremental_install=true.
             add_to_zip(
-                apk_dex_dir + dex,
-                dex_zip.read(dex),
+                apk_dex_dir + 'classes.dex',
+                dex_file_obj.read(),
                 compress=not options.uncompress_dex)
+          else:
+            with zipfile.ZipFile(dex_file_obj) as dex_zip:
+              for dex in (d for d in dex_zip.namelist() if d.endswith('.dex')):
+                add_to_zip(
+                    apk_dex_dir + dex,
+                    dex_zip.read(dex),
+                    compress=not options.uncompress_dex)
 
       # 4. Native libraries.
       logging.debug('Adding lib/')
@@ -388,14 +400,14 @@ def main(args):
         # with stale builds when the only change is adding/removing
         # placeholders).
         apk_path = 'lib/%s/%s' % (options.android_abi, name)
-        add_to_zip(apk_path, '')
+        add_to_zip(apk_path, '', alignment=0x1000)
 
       for name in sorted(secondary_native_lib_placeholders):
         # Note: Empty libs files are ignored by md5check (can cause issues
         # with stale builds when the only change is adding/removing
         # placeholders).
         apk_path = 'lib/%s/%s' % (options.secondary_android_abi, name)
-        add_to_zip(apk_path, '')
+        add_to_zip(apk_path, '', alignment=0x1000)
 
       # 5. Resources
       logging.debug('Adding res/')
