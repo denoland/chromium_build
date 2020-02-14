@@ -93,6 +93,11 @@ _COVERAGE_EXCLUSION_LIST_MAP = {
         '../../components/cast_channel/cast_channel_enum.cc',
         '../../components/cast_channel/cast_message_util.cc',
         '../../ui/events/keycodes/dom/keycode_converter.cc',
+        # TODO(crbug.com/1051561): angle_unittests affected by coverage.
+        '../../base/message_loop/message_pump_default.cc',
+        '../../base/message_loop/message_pump_libevent.cc',
+        '../../base/message_loop/message_pump_win.cc',
+        '../../base/task/sequence_manager/thread_controller_with_message_pump_impl.cc',  #pylint: disable=line-too-long
     ],
     'chromeos': [
         # These files caused clang to crash while compiling them. They are
@@ -101,6 +106,11 @@ _COVERAGE_EXCLUSION_LIST_MAP = {
         '../../third_party/icu/source/common/uts46.cpp',
         '../../third_party/icu/source/common/ucnvmbcs.cpp',
         '../../base/android/android_image_reader_compat.cc',
+        # TODO(crbug.com/1051561): angle_unittests affected by coverage.
+        '../../base/message_loop/message_pump_default.cc',
+        '../../base/message_loop/message_pump_libevent.cc',
+        '../../base/message_loop/message_pump_win.cc',
+        '../../base/task/sequence_manager/thread_controller_with_message_pump_impl.cc',  #pylint: disable=line-too-long
     ],
     'win': [],
 }
