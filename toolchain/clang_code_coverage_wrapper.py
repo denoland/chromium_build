@@ -68,7 +68,13 @@ _COVERAGE_FLAGS = [
 ]
 
 # Files that should not be built with coverage flags by default.
-_DEFAULT_COVERAGE_EXCLUSION_LIST = []
+_DEFAULT_COVERAGE_EXCLUSION_LIST = [
+    # TODO(crbug.com/1051561): angle_unittests affected by coverage.
+    '../../base/message_loop/message_pump_default.cc',
+    '../../base/message_loop/message_pump_libevent.cc',
+    '../../base/message_loop/message_pump_win.cc',
+    '../../base/task/sequence_manager/thread_controller_with_message_pump_impl.cc',  #pylint: disable=line-too-long
+]
 
 # Map of exclusion lists indexed by target OS.
 # If no target OS is defined, or one is defined that doesn't have a specific
