@@ -51,8 +51,7 @@ const char kAsanDefaultOptions[] =
 #elif defined(OS_MACOSX)
 const char* kAsanDefaultOptions =
     "check_printf=1 use_sigaltstack=1 strip_path_prefix=/../../ "
-    "fast_unwind_on_fatal=1 detect_stack_use_after_return=1 "
-    "detect_odr_violation=0 ";
+    "fast_unwind_on_fatal=1 detect_stack_use_after_return=1 ";
 
 #elif defined(OS_WIN)
 const char* kAsanDefaultOptions =
