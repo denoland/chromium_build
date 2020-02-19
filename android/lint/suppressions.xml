@@ -40,12 +40,6 @@ Still reading?
   <issue id="ButtonStyle" severity="Error">
     <ignore regexp="remoting/android/host/res/layout/main.xml"/>
   </issue>
-  <!-- Can be removed when BOM marks are removed: https://crbug.com/1033305-->
-  <issue id="ByteOrderMark" severity="Error">
-    <ignore regexp="values-pt-rBR/android_chrome_strings.xml"/>
-    <ignore regexp="values-si/android_chrome_strings.xml"/>
-    <ignore regexp="values-zh-rHK/android_chrome_strings.xml"/>
-  </issue>
   <issue id="ClickableViewAccessibility" severity="ignore"/>
   <issue id="CommitPrefEdits">
     <ignore regexp="third_party/cacheinvalidation/src/java/com/google/ipc/invalidation/ticl/android2/channel/AndroidChannelPreferences.java"/>
