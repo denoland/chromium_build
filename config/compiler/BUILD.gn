@@ -137,7 +137,8 @@ declare_args() {
   # TODO(vitalybuka):
   # 'is_android' breaks content_shell_test_apk on android-kitkat-arm-rel.
   # 'use_xcode_clang' may call old clang.
-  init_stack_vars = !is_android && !use_xcode_clang && !is_official_build
+  init_stack_vars =
+      !is_android && !use_xcode_clang && (!is_official_build || is_linux)
 }
 
 declare_args() {
