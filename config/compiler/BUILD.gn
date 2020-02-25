@@ -1998,8 +1998,6 @@ config("optimize") {
     # Favor size over speed, /O1 must be before the common flags.
     # /O1 implies /Os and /GF.
     cflags = [ "/O1" ] + common_optimize_on_cflags + [ "/Oi" ]
-    # TODO(thakis): Use -flto in official builds here eventually,
-    # https://crbug.com/598772
   } else if (optimize_for_size && !is_nacl) {
     # Favor size over speed.
     # TODO(crbug.com/718650): Fix -Os in PNaCl compiler and remove the is_nacl
@@ -2067,13 +2065,6 @@ config("optimize_max") {
       # Favor speed over size, /O2 must be before the common flags.
       # /O2 implies /Ot, /Oi, and /GF.
       cflags = [ "/O2" ] + common_optimize_on_cflags
-
-      if (is_official_build) {
-        if (!is_clang) {
-          cflags += [ "/GL" ]  # Whole program optimization.
-        }
-        # TODO(crbug.com/598772): Enable -flto for Clang.
-      }
     } else if (optimize_for_fuzzing) {
       cflags = [ "-O1" ] + common_optimize_on_cflags
     } else {
@@ -2106,11 +2097,6 @@ config("optimize_speed") {
       # Favor speed over size, /O2 must be before the common flags.
       # /O2 implies /Ot, /Oi, and /GF.
       cflags = [ "/O2" ] + common_optimize_on_cflags
-
-      # TODO(thakis): Remove is_clang here, https://crbug.com/598772
-      if (is_official_build && !is_clang) {
-        cflags += [ "/GL" ]  # Whole program optimization.
-      }
     } else if (optimize_for_fuzzing) {
       cflags = [ "-O1" ] + common_optimize_on_cflags
     } else {
