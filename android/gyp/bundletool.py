@@ -19,7 +19,7 @@ BUNDLETOOL_DIR = os.path.abspath(os.path.join(
     __file__, '..', '..', '..', '..', 'third_party', 'android_build_tools',
     'bundletool'))
 
-BUNDLETOOL_VERSION = '0.12.0'
+BUNDLETOOL_VERSION = '0.13.3'
 
 BUNDLETOOL_JAR_PATH = os.path.join(
     BUNDLETOOL_DIR, 'bundletool-all-%s.jar' % BUNDLETOOL_VERSION)
@@ -29,7 +29,6 @@ def RunBundleTool(args):
   logging.debug(' '.join(args))
   return build_utils.CheckOutput(
       args,
-      print_stdout=True,
       print_stderr=True,
       stderr_filter=build_utils.FilterReflectiveAccessJavaWarnings)
 

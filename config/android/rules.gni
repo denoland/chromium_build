@@ -5,6 +5,7 @@
 # Do not add any imports to non-//build directories here.
 # Some projects (e.g. V8) do not have non-build directories DEPS'ed in.
 
+import("//build/config/android/channel.gni")
 import("//build/config/android/config.gni")
 import("//build/config/android/internal_rules.gni")
 import("//build/config/clang/clang.gni")
@@ -950,9 +951,7 @@ if (enable_java_templates) {
     } else {
       _sources_build_rel = []
 
-      # Speed up "gn gen" by short-circuiting the empty directory.
-      if (invoker.resource_dirs != [ "//build/android/empty" ] &&
-          invoker.resource_dirs != []) {
+      if (invoker.resource_dirs != []) {
         _sources_build_rel +=
             exec_script("//build/android/gyp/find.py",
                         rebase_path(invoker.resource_dirs, root_build_dir),
@@ -960,7 +959,6 @@ if (enable_java_templates) {
       }
       _resource_files = rebase_path(_sources_build_rel, ".", root_build_dir)
     }
-
     _rebased_resource_files = rebase_path(_resource_files, root_build_dir)
     write_file(_res_sources_path, _rebased_resource_files)
 
@@ -2176,7 +2174,7 @@ if (enable_java_templates) {
           process_file_template([ _final_apk_path ],
                                 "{{source_dir}}/{{source_name_part}}")
       _final_apk_path_no_ext = _final_apk_path_no_ext_list[0]
-      assert(_final_apk_path_no_ext != "")  # Mark as used.
+      not_needed([ "_final_apk_path_no_ext" ])
     }
 
     # Non-base bundle modules create only proto resources.
@@ -2257,8 +2255,10 @@ if (enable_java_templates) {
     _load_library_from_apk =
         defined(invoker.load_library_from_apk) && invoker.load_library_from_apk
 
-    assert(_use_chromium_linker || true)  # Mark as used.
-    assert(_use_modern_linker || true)  # Mark as used.
+    not_needed([
+                 "_use_chromium_linker",
+                 "_use_modern_linker",
+               ])
     assert(!_load_library_from_apk || _use_chromium_linker,
            "load_library_from_apk requires use_chromium_linker")
 
@@ -2297,7 +2297,6 @@ if (enable_java_templates) {
     }
 
     _secondary_abi_native_libs_deps = []
-    assert(_secondary_abi_native_libs_deps == [])  # mark as used.
 
     if (defined(invoker.secondary_abi_shared_libraries) &&
         invoker.secondary_abi_shared_libraries != []) {
@@ -2338,6 +2337,7 @@ if (enable_java_templates) {
 
     _proguard_enabled =
         defined(invoker.proguard_enabled) && invoker.proguard_enabled
+
     if (!_is_bundle_module && _proguard_enabled) {
       _proguard_mapping_path = "$_final_apk_path.mapping"
     }
@@ -2772,6 +2772,7 @@ if (enable_java_templates) {
                                "native_lib_placeholders",
                                "no_build_hooks",
                                "processor_args_javac",
+                               "skip_jetify",
                                "secondary_abi_loadable_modules",
                                "secondary_native_lib_placeholders",
                                "sources",
@@ -2933,6 +2934,7 @@ if (enable_java_templates) {
           forward_variables_from(invoker, [ "proguard_jar_path" ])
           deps += _deps + [ ":$_compile_resources_target" ]
           proguard_mapping_path = _proguard_mapping_path
+          proguard_sourcefile_suffix = "$android_channel-$_version_code"
         } else {
           input_dex_filearg =
               "@FileArg(${_rebased_build_config}:final_dex:all_dex_files)"
@@ -3189,7 +3191,7 @@ if (enable_java_templates) {
           # the proper bitness for the app.
           _has_native_libs =
               defined(invoker.native_libs_filearg) || _loadable_modules != []
-          if (_has_native_libs) {
+          if (_has_native_libs && !defined(native_lib_placeholders)) {
             native_lib_placeholders = [ "libfix.crbug.384638.so" ]
           }
 
@@ -3452,6 +3454,7 @@ if (enable_java_templates) {
                                "secondary_abi_loadable_modules",
                                "secondary_abi_shared_libraries",
                                "secondary_native_lib_placeholders",
+                               "skip_jetify",
                                "shared_libraries",
                                "shared_resources",
                                "shared_resources_whitelist_locales",
@@ -4002,12 +4005,8 @@ if (enable_java_templates) {
       _proto_runtime = "//third_party/android_protobuf:protobuf_nano_javalib"
     } else {
       # Use the regular proto library to generate lite protos.
-      _protoc_dep = "//third_party/protobuf:protoc($host_toolchain)"
-      _protoc_out_dir = get_label_info(_protoc_dep, "root_out_dir")
-      _protoc_bin = "$_protoc_out_dir/protoc"
-      _proto_runtime =
-          "//third_party/android_deps:com_google_protobuf_protobuf_lite_java"
-      _protoc_javalite_plugin_dir = "//third_party/protoc_javalite/"
+      _protoc_bin = "//third_party/android_protoc/protoc"
+      _proto_runtime = "//third_party/android_deps:com_google_protobuf_protobuf_javalite_java"
     }
     _proto_path = invoker.proto_path
     _template_name = target_name
@@ -4016,7 +4015,10 @@ if (enable_java_templates) {
       _srcjar_path = "$target_gen_dir/$target_name.srcjar"
       script = "//build/protoc_java.py"
 
-      deps = [ _protoc_dep ]
+      deps = []
+      if (defined(_protoc_dep)) {
+        deps += [ _protoc_dep ]
+      }
       if (defined(invoker.deps)) {
         deps += invoker.deps
       }
@@ -4046,11 +4048,6 @@ if (enable_java_templates) {
 
       if (_generate_nano) {
         args += [ "--nano" ]
-      } else {
-        args += [
-          "--protoc-javalite-plugin-dir",
-          rebase_path(_protoc_javalite_plugin_dir, root_build_dir),
-        ]
       }
     }
 
@@ -4248,6 +4245,7 @@ if (enable_java_templates) {
       "jar_excluded_patterns",
       "jar_included_patterns",
       "requires_android",
+      "skip_jetify",
       "testonly",
     ]
 
@@ -4279,7 +4277,6 @@ if (enable_java_templates) {
                                  "deps",
                                  "input_jars_paths",
                                  "proguard_configs",
-                                 "skip_jetify",
                                ])
         if (!defined(deps)) {
           deps = []
@@ -4397,6 +4394,8 @@ if (enable_java_templates) {
   #    verify_proguard_flags: Enables verification of expected merged proguard
   #      flags based on a golden file.
   #
+  #    version_code: Optional. Version code of the target.
+  #
   #    is_multi_abi: If true will add a library placeholder for the missing ABI
   #      if either the primary or the secondary ABI has no native libraries set.
   #
@@ -4416,6 +4415,19 @@ if (enable_java_templates) {
     _uses_static_library = defined(invoker.static_library_provider)
     _proguard_enabled =
         defined(invoker.proguard_enabled) && invoker.proguard_enabled
+
+    if (defined(invoker.version_code)) {
+      _version_code = invoker.version_code
+    } else {
+      _version_code = android_default_version_code
+    }
+
+    if (android_override_version_code != "") {
+      _version_code = android_override_version_code
+    }
+
+    # Prevent "unused variable".
+    not_needed([ "_version_code" ])
 
     _bundle_base_path = "$root_build_dir/apks"
     if (defined(invoker.bundle_base_path)) {
@@ -4619,15 +4631,16 @@ if (enable_java_templates) {
               "/java/$_target_name.proguard_flags.expected"
         }
         dex(_sync_dex_target) {
-          enable_multidex = _enable_multidex
-          proguard_enabled = true
-          proguard_mapping_path = _proguard_mapping_path
           forward_variables_from(invoker,
                                  [
                                    "failed_proguard_expectation_file",
                                    "proguard_jar_path",
                                    "min_sdk_version",
                                  ])
+          enable_multidex = _enable_multidex
+          proguard_enabled = true
+          proguard_mapping_path = _proguard_mapping_path
+          proguard_sourcefile_suffix = "$android_channel-$_version_code"
           build_config = _build_config
 
           if (_verify_proguard_flags) {

@@ -73,12 +73,17 @@ config("compiler") {
 # that is iOS-only. Please see that target for advice on what should go in
 # :runtime_library vs. :compiler.
 config("runtime_library") {
-  common_flags = [
-    "-isysroot",
-    sysroot,
-
-    "-stdlib=libc++",
-  ]
+  if (ios_enable_relative_sdk_path) {
+    common_flags = [
+      "-isysroot",
+      rebase_path(sysroot, root_build_dir),
+    ]
+  } else {
+    common_flags = [
+      "-isysroot",
+      sysroot,
+    ]
+  }
 
   if (use_ios_simulator) {
     common_flags += [ "-mios-simulator-version-min=$ios_deployment_target" ]
@@ -111,15 +116,9 @@ config("ios_dynamic_flags") {
 }
 
 config("xctest_config") {
-  common_flags = [
-    "-F",
-    "$ios_sdk_platform_path/Developer/Library/Frameworks",
-  ]
+  framework_dirs = [ "$ios_sdk_platform_path/Developer/Library/Frameworks" ]
 
-  cflags = common_flags
-  ldflags = common_flags
-
-  libs = [
+  frameworks = [
     "Foundation.framework",
     "XCTest.framework",
   ]

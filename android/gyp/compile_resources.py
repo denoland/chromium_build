@@ -33,6 +33,12 @@ from util import diff_utils
 from util import manifest_utils
 from util import resource_utils
 
+# `Resources_pb2` module imports `descriptor`, which imports `six`.
+sys.path.insert(
+    1,
+    os.path.join(
+        os.path.dirname(__file__), os.pardir, os.pardir, os.pardir,
+        'third_party', 'six', 'src'))
 
 # Import jinja2 from third_party/jinja2
 sys.path.insert(1, os.path.join(build_utils.DIR_SOURCE_ROOT, 'third_party'))
@@ -550,7 +556,9 @@ def _JetifyArchive(dep_path, output_path):
         _JETIFY_SCRIPT_PATH, '-i', temp_archive.name, '-o', temp_archive.name,
         '-l', 'error'
     ]
-    subprocess.check_call(jetify_cmd)
+    env = os.environ.copy()
+    env['JAVA_HOME'] = build_utils.JAVA_HOME
+    subprocess.check_call(jetify_cmd, env=env)
     with zipfile.ZipFile(temp_archive.name) as zf:
       zf.extractall(output_path)
 
@@ -593,10 +601,9 @@ def _CompileDeps(aapt2_path, dep_subdirs, temp_dir):
 
     jetify_dir = os.path.join(partials_dir, 'jetify')
     build_utils.MakeDirectory(jetify_dir)
-    # TODO (bjoyce): Enable when androidx is ready.
-    # working_jetify_path = os.path.join(jetify_dir, 'jetify_' + partial_path)
-    # jetified_dep = _JetifyArchive(dep_path, working_jetify_path)
-    # dep_path = jetified_dep
+    working_jetify_path = os.path.join(jetify_dir, 'jetify_' + partial_path)
+    jetified_dep = _JetifyArchive(dep_path, working_jetify_path)
+    dep_path = jetified_dep
 
     compile_command = (
         partial_compile_command + ['--dir', dep_path, '-o', partial_path])

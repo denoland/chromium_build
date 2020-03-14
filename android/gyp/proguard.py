@@ -160,6 +160,7 @@ def _ParseOptions():
       '--disable-checkdiscard',
       action='store_true',
       help='Disable -checkdiscard directives')
+  parser.add_argument('--sourcefile', help='Value for source file attribute')
 
   options = parser.parse_args(args)
 
@@ -380,6 +381,10 @@ def _CreateDynamicConfig(options):
   public static final int SDK_INT return %s..9999;
 }""" % options.min_api)
 
+  if options.sourcefile:
+    ret.append("-renamesourcefileattribute '%s' # OMIT FROM EXPECTATIONS" %
+               options.sourcefile)
+
   if options.apply_mapping:
     ret.append("-applymapping '%s'" % os.path.abspath(options.apply_mapping))
   if options.repackage_classes:
@@ -427,6 +432,10 @@ def main():
 
   libraries = []
   for p in options.classpath:
+    # TODO(bjoyce): Remove filter once old android support libraries are gone.
+    # Fix for having Library class extend program class dependency problem.
+    if 'com_android_support' in p or 'android_support_test' in p:
+      continue
     # If a jar is part of input no need to include it as library jar.
     if p not in libraries and p not in options.input_paths:
       libraries.append(p)

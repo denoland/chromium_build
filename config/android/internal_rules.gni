@@ -10,6 +10,8 @@ import("//build/config/coverage/coverage.gni")
 import("//build/config/dcheck_always_on.gni")
 import("//build/config/python.gni")
 import("//build/config/sanitizers/sanitizers.gni")
+import("//build/toolchain/goma.gni")
+import("//build/toolchain/kythe.gni")
 import("//build/util/generate_wrapper.gni")
 import("//build_overrides/build.gni")
 assert(is_android)
@@ -201,6 +203,15 @@ template("write_build_config") {
       args += [
         "--java-resources-jar-path",
         rebase_path(invoker.java_resources_jar, root_build_dir),
+      ]
+    }
+    if (defined(invoker.skip_jetify) && invoker.skip_jetify) {
+      args += [ "--skip-jetify" ]
+    }
+    if (defined(invoker.jetified_jar_path)) {
+      args += [
+        "--jetified-jar-path",
+        rebase_path(invoker.jetified_jar_path, root_build_dir),
       ]
     }
     if (defined(invoker.annotation_processor_deps)) {
@@ -641,7 +652,7 @@ template("test_runner_script") {
           get_label_info(invoker.apk_target, "target_gen_dir") + "/" +
           get_label_info(invoker.apk_target, "name") + ".build_config"
       _rebased_apk_build_config = rebase_path(_apk_build_config, root_build_dir)
-      assert(_rebased_apk_build_config != "")  # Mark as used.
+      not_needed([ "_rebased_apk_build_config" ])
     } else if (_test_type == "gtest") {
       assert(
           defined(invoker.executable_dist_dir),
@@ -828,7 +839,6 @@ template("test_runner_script") {
 
 if (enable_java_templates) {
   android_sdk_jar = "$android_sdk/android.jar"
-  android_default_aapt_path = "$android_sdk_build_tools/aapt"
 
   template("android_lint") {
     _min_sdk_version = 19
@@ -968,6 +978,12 @@ if (enable_java_templates) {
       if (defined(invoker.proguard_mapping_path)) {
         _mapping_path = invoker.proguard_mapping_path
       }
+
+      _proguard_sourcefile_suffix = ""
+      if (defined(invoker.proguard_sourcefile_suffix)) {
+        _proguard_sourcefile_suffix = "-${invoker.proguard_sourcefile_suffix}"
+      }
+
       depfile = "${target_gen_dir}/${target_name}.d"
       outputs = [
         _output_path,
@@ -986,6 +1002,18 @@ if (enable_java_templates) {
         "--classpath",
         "@FileArg($_rebased_build_config:android:sdk_jars)",
       ]
+
+      if (enable_proguard_obfuscation) {
+        # This is generally the apk name, and serves to identify the mapping
+        # file that would be required to deobfuscate a stacktrace.
+        _mapping_id = get_path_info(_mapping_path, "name")
+        args += [
+          "--sourcefile",
+          "chromium-${_mapping_id}${_proguard_sourcefile_suffix}",
+        ]
+      } else {
+        not_needed([ "_proguard_sourcefile_suffix" ])
+      }
 
       if (defined(invoker.disable_r8_outlining) &&
           invoker.disable_r8_outlining) {
@@ -1156,6 +1184,7 @@ if (enable_java_templates) {
                                  "proguard_expectations_file",
                                  "proguard_jar_path",
                                  "proguard_mapping_path",
+                                 "proguard_sourcefile_suffix",
                                  "is_static_library",
                                  "testonly",
                                ])
@@ -1470,7 +1499,7 @@ if (enable_java_templates) {
   #    coverage data.
   #  jar_excluded_patterns: Optional list of .class file patterns to exclude
   #    from the final .jar file.
-  #  jar_included_patterns: OPtional list of .class file patterns to include
+  #  jar_included_patterns: Optional list of .class file patterns to include
   #    in the final .jar file. jar_excluded_patterns take precedence over this.
   #  skip_jetify: A boolean on whether to skip jetifying or not.
   #  strip_resource_classes:
@@ -1506,9 +1535,6 @@ if (enable_java_templates) {
     _desugar = defined(invoker.supports_android) && invoker.supports_android
     _jacoco_instrument = invoker.jacoco_instrument
     _skip_jetify = defined(invoker.skip_jetify) && invoker.skip_jetify
-
-    # TODO(bjoyce): Remove once Androidx with jetifying lands.
-    not_needed([ "_skip_jetify" ])
 
     _enable_bytecode_rewriter =
         _enable_assert || _enable_custom_resources || _enable_thread_annotations
@@ -1548,6 +1574,44 @@ if (enable_java_templates) {
 
     _deps = []
     _previous_output_jar = _input_jar_path
+
+    if (!_skip_jetify) {
+      _jetify_target = "${target_name}__jetify"
+      _jetify_input_jar = _previous_output_jar
+      _jetify_output_jar = "$target_out_dir/$target_name-jetified.jar"
+
+      action_with_pydeps(_jetify_target) {
+        script = "//build/android/gyp/jetify_jar.py"
+        deps = _deps
+        if (defined(invoker.deps)) {
+          deps += invoker.deps
+        }
+        _jetify_jar_path =
+            "//third_party/jetifier_standalone/bin/jetifier-standalone"
+        _jetify_config_path =
+            "//third_party/jetifier_standalone/config/ignore_R.config"
+
+        inputs = [
+          _jetify_input_jar,
+          _jetify_jar_path,
+        ]
+        outputs = [ _jetify_output_jar ]
+        args = [
+          "--input-path",
+          rebase_path(invoker.input_jar_path, root_build_dir),
+          "--output-path",
+          rebase_path(_jetify_output_jar, root_build_dir),
+          "--jetify-path",
+          rebase_path(_jetify_jar_path, root_build_dir),
+          "--jetify-config-path",
+          rebase_path(_jetify_config_path, root_build_dir),
+        ]
+      }
+
+      _deps = []
+      _deps = [ ":$_jetify_target" ]
+      _previous_output_jar = _jetify_output_jar
+    }
 
     if (_enable_bytecode_rewriter) {
       _java_bytecode_rewriter_target = "${target_name}__bytecode_rewrite"
@@ -1637,7 +1701,7 @@ if (enable_java_templates) {
 
           # Temporarily using java_full_interface_classpath until classpath validation of targets
           # is implemented, see http://crbug.com/885273
-          "--classpath=@FileArg($_rebased_build_config:deps_info:javac_full_interface_classpath)",
+          "--classpath=@FileArg($_rebased_build_config:deps_info:jetified_full_jar_classpath)",
           "--bootclasspath=@FileArg($_rebased_build_config:android:sdk_interface_jars)",
           "--depfile",
           rebase_path(depfile, root_build_dir),
@@ -1757,8 +1821,9 @@ if (enable_java_templates) {
       args = [
         "--depfile",
         rebase_path(depfile, root_build_dir),
-        "--build-vars",
-        rebase_path(android_build_vars, root_build_dir),
+        "--android-sdk-cmdline-tools",
+        rebase_path("${public_android_sdk_root}/cmdline-tools/latest",
+                    root_build_dir),
         "--root-manifest",
         rebase_path(invoker.input_manifest, root_build_dir),
         "--output",
@@ -1841,11 +1906,8 @@ if (enable_java_templates) {
         invoker.r_text_out_path,
       ]
 
-      _android_aapt_path = android_default_aapt_path
-
       inputs = [
         invoker.build_config,
-        _android_aapt_path,
         invoker.res_sources_path,
       ]
 
@@ -1857,8 +1919,6 @@ if (enable_java_templates) {
         "--depfile",
         rebase_path(depfile, root_build_dir),
         "--include-resources=@FileArg($_rebased_build_config:android:sdk_jars)",
-        "--aapt-path",
-        rebase_path(_android_aapt_path, root_build_dir),
         "--dependencies-res-zips=@FileArg($_rebased_build_config:deps_info:dependency_zips)",
         "--extra-res-packages=@FileArg($_rebased_build_config:deps_info:extra_package_names)",
         "--extra-r-text-files=@FileArg($_rebased_build_config:deps_info:extra_r_text_files)",
@@ -2724,11 +2784,25 @@ if (enable_java_templates) {
         "--generated-dir=$_rebased_generated_dir",
         "--jar-path=$_rebased_javac_jar_path",
         "--java-srcjars=$_rebased_java_srcjars",
-        "--java-version=1.8",
         "--classpath=@FileArg($_rebased_build_config:deps_info:javac_full_interface_classpath)",
         "--processorpath=@FileArg($_rebased_build_config:javac:processor_classpath)",
         "--processors=@FileArg($_rebased_build_config:javac:processor_classes)",
       ]
+      if (invoker.supports_android) {
+        args += [ "--java-version=1.8" ]
+      }
+      if (use_java_goma) {
+        args += [ "--gomacc-path=$goma_dir/gomacc" ]
+
+        # Override the default action_pool when goma is enabled.
+        pool = "//build/config/android:goma_javac_pool"
+      }
+
+      # Flag enable_kythe_annotations requires
+      # checkout_android_prebuilts_build_tools=True in .gclient.
+      if (enable_kythe_annotations && !invoker.enable_errorprone) {
+        args += [ "--enable-kythe-annotations" ]
+      }
       if (defined(invoker.srcjar_filearg)) {
         args += [ "--java-srcjars=${invoker.srcjar_filearg}" ]
       }
@@ -3123,6 +3197,8 @@ if (enable_java_templates) {
         _accumulated_deps += [ "//third_party/android_sdk:android_sdk_java" ]
       }
     }
+    _jetified_jar_path =
+        "$target_out_dir/${target_name}__process_prebuilt-jetified.jar"
 
     # Define build_config_deps which will be a list of targets required to
     # build the _build_config.
@@ -3182,7 +3258,9 @@ if (enable_java_templates) {
       }
       build_config = _build_config
       is_prebuilt = _is_prebuilt
+      jetified_jar_path = _jetified_jar_path
       possible_config_deps = _accumulated_deps
+      skip_jetify = defined(invoker.skip_jetify) && invoker.skip_jetify
       if (defined(apk_under_test)) {
         possible_config_deps += [ apk_under_test ]
       }
@@ -3267,6 +3345,7 @@ if (enable_java_templates) {
           }
           srcjar_deps = _srcjar_deps
           chromium_code = _chromium_code
+          supports_android = _supports_android
           requires_android = _requires_android
           deps = _accumulated_deps + _accumulated_public_deps
 
@@ -3310,7 +3389,7 @@ if (enable_java_templates) {
       }
       if (defined(invoker.android_manifest_for_lint)) {
         _android_manifest_for_lint = invoker.android_manifest_for_lint
-        assert(_android_manifest_for_lint != "")  # Mark as used.
+        not_needed([ "_android_manifest_for_lint" ])
       }
       if (_lint_enabled) {
         _android_lint_target = "${_main_target_name}__lint"

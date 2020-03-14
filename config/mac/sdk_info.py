@@ -9,13 +9,17 @@ import doctest
 import itertools
 import os
 import plistlib
+import re
 import subprocess
 import sys
 
+# src directory
+ROOT_SRC_DIR = os.path.dirname(
+    os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
+
 # src/build/xcode_links
-XCODE_LINK_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(
-        os.path.realpath(__file__)))), "xcode_links")
+XCODE_LINK_DIR = os.path.join(ROOT_SRC_DIR, "build", "xcode_links")
 
 # This script prints information about the build system, the operating
 # system and the iOS or Mac SDK (depending on the platform "iphonesimulator",
@@ -67,8 +71,24 @@ def FillXcodeVersion(settings, developer_dir):
 
 def FillMachineOSBuild(settings):
   """Fills OS build number into |settings|."""
-  settings['machine_os_build'] = subprocess.check_output(
-      ['sw_vers', '-buildVersion']).strip()
+  machine_os_build = subprocess.check_output(['sw_vers',
+                                              '-buildVersion']).strip()
+  settings['machine_os_build'] = machine_os_build
+
+  # The reported build number is made up from the kernel major version number,
+  # a minor version represented as a letter, a build number, and an optional
+  # packaging version.
+  #
+  # For example, the macOS 10.15.3 GM build is 19D76.
+  # - 19 is the Darwin kernel that ships with 10.15.
+  # - D is minor version 4. 10.15.0 builds had minor version 1.
+  # - 76 is the build number. 75 other builds were stamped before GM came out.
+  #
+  # The macOS 10.15.4 beta 5 build is 19E258a. The trailing "a" means the same
+  # build output was packaged twice.
+  build_match = re.match(r'^(\d+)([A-Z])(\d+)([a-z]?)$', machine_os_build)
+  assert build_match, "Unexpected macOS build format: %r" % machine_os_build
+  settings['machine_os_build_major'] = int(build_match.group(1), 10)
 
 
 def FillSDKPathAndVersion(settings, platform, xcode_version):
@@ -99,7 +119,8 @@ def CreateXcodeSymlinkUnderChromiumSource(src):
   if os.path.islink(dst):
     os.unlink(dst)
   os.symlink(src, dst)
-  return dst
+
+  return '//' + os.path.relpath(dst, ROOT_SRC_DIR)
 
 
 if __name__ == '__main__':
