@@ -19,7 +19,7 @@ assert(is_android)
 # These identify targets that have .build_config files (except for android_apk,
 # java_binary, android_app_bundle since we never need to
 # depend on these).
-_java_target_whitelist = [
+_java_target_patterns = [
   "*:*_java",
   "*:*_javalib",
   "*:*_java_*",  # e.g. java_test_support
@@ -41,8 +41,8 @@ _java_target_whitelist = [
   "*android_webview/glue:glue",
 ]
 
-# Targets that match the whitelist but are not actually java targets.
-_java_target_blacklist = [ "*:*_unpack_aar" ]
+# Targets that match the patterns but are not actually java targets.
+_java_target_exceptions = [ "*:*_unpack_aar" ]
 
 _r8_path = "//third_party/r8/lib/r8.jar"
 
@@ -117,8 +117,8 @@ template("write_build_config") {
     _parent_invoker = invoker.invoker
     _target_label =
         get_label_info(":${_parent_invoker.target_name}", "label_no_toolchain")
-    if (filter_exclude([ _target_label ], _java_target_whitelist) != [] &&
-        filter_exclude([ _target_label ], _java_target_blacklist) != []) {
+    if (filter_exclude([ _target_label ], _java_target_patterns) != [] &&
+        filter_exclude([ _target_label ], _java_target_exceptions) != []) {
       assert(false, "Invalid java target name: $_target_label")
     }
   }
@@ -145,8 +145,8 @@ template("write_build_config") {
     if (defined(invoker.possible_config_deps)) {
       foreach(_possible_dep, invoker.possible_config_deps) {
         _target_label = get_label_info(_possible_dep, "label_no_toolchain")
-        if (filter_exclude([ _target_label ], _java_target_whitelist) == [] &&
-            filter_exclude([ _target_label ], _java_target_blacklist) != []) {
+        if (filter_exclude([ _target_label ], _java_target_patterns) == [] &&
+            filter_exclude([ _target_label ], _java_target_exceptions) != []) {
           # Put the bug number in the target name so that false-positives
           # have a hint in the error message about non-existent dependencies.
           deps += [ "$_target_label$build_config_target_suffix" ]
@@ -342,10 +342,10 @@ template("write_build_config") {
       ]
     }
 
-    if (defined(invoker.base_whitelist_rtxt_path)) {
+    if (defined(invoker.base_allowlist_rtxt_path)) {
       args += [
-        "--base-whitelist-rtxt-path",
-        rebase_path(invoker.base_whitelist_rtxt_path, root_build_dir),
+        "--base-allowlist-rtxt-path",
+        rebase_path(invoker.base_allowlist_rtxt_path, root_build_dir),
       ]
     }
 
@@ -1990,24 +1990,24 @@ if (enable_java_templates) {
   #     which is both an application and a shared runtime library that
   #     implements the system webview feature.
   #
-  #   shared_resources_whitelist: (optional)
+  #   shared_resources_allowlist: (optional)
   #     Path to an R.txt file. If provided, acts similar to shared_resources
   #     except that it restricts the list of non-final resource variables
   #     to the list from the input R.txt file. Overrides shared_resources
   #     when both are specified.
   #
-  #   shared_resources_whitelist_locales: (optional)
-  #     If shared_resources_whitelist is used, provide an optional list of
+  #   shared_resources_allowlist_locales: (optional)
+  #     If shared_resources_allowlist is used, provide an optional list of
   #     Chromium locale names to determine which localized shared string
-  #     resources to put in the final output, even if aapt_locale_whitelist
+  #     resources to put in the final output, even if aapt_locale_allowlist
   #     is defined to a smaller subset.
   #
   #   support_zh_hk: (optional)
   #     If true, support zh-HK in Chrome on Android by using the resources
   #     from zh-TW. See https://crbug.com/780847.
   #
-  #   aapt_locale_whitelist: (optional)
-  #     Restrict compiled locale-dependent resources to a specific whitelist.
+  #   aapt_locale_allowlist: (optional)
+  #     Restrict compiled locale-dependent resources to a specific allowlist.
   #     NOTE: This is a list of Chromium locale names, not Android ones.
   #
   #   r_java_root_package_name: (optional)
@@ -2015,9 +2015,9 @@ if (enable_java_templates) {
   #     "base" would become "gen.base_module" for the root R java package name).
   #     Optional as defaults to "base".
   #
-  #   resource_blacklist_regex: (optional)
+  #   resource_exclusion_regex: (optional)
   #
-  #   resource_blacklist_exceptions: (optional)
+  #   resource_exclusion_exceptions: (optional)
   #
   #   no_xml_namespaces: (optional)
   #
@@ -2273,16 +2273,16 @@ if (enable_java_templates) {
         ]
       }
 
-      if (defined(invoker.shared_resources_whitelist)) {
-        inputs += [ invoker.shared_resources_whitelist ]
+      if (defined(invoker.shared_resources_allowlist)) {
+        inputs += [ invoker.shared_resources_allowlist ]
         args += [
-          "--shared-resources-whitelist",
-          rebase_path(invoker.shared_resources_whitelist, root_build_dir),
+          "--shared-resources-allowlist",
+          rebase_path(invoker.shared_resources_allowlist, root_build_dir),
         ]
       }
-      if (defined(invoker.shared_resources_whitelist_locales)) {
-        args += [ "--shared-resources-whitelist-locales=" +
-                  "${invoker.shared_resources_whitelist_locales}" ]
+      if (defined(invoker.shared_resources_allowlist_locales)) {
+        args += [ "--shared-resources-allowlist-locales=" +
+                  "${invoker.shared_resources_allowlist_locales}" ]
       }
 
       if (defined(invoker.proguard_file)) {
@@ -2301,8 +2301,8 @@ if (enable_java_templates) {
         ]
       }
 
-      if (defined(invoker.aapt_locale_whitelist)) {
-        args += [ "--locale-whitelist=${invoker.aapt_locale_whitelist}" ]
+      if (defined(invoker.aapt_locale_allowlist)) {
+        args += [ "--locale-allowlist=${invoker.aapt_locale_allowlist}" ]
       }
       if (defined(invoker.png_to_webp) && invoker.png_to_webp) {
         _webp_target = "//third_party/libwebp:cwebp($host_toolchain)"
@@ -2315,11 +2315,11 @@ if (enable_java_templates) {
           rebase_path(_webp_binary, root_build_dir),
         ]
       }
-      if (defined(invoker.resource_blacklist_regex)) {
+      if (defined(invoker.resource_exclusion_regex)) {
         args +=
-            [ "--resource-blacklist-regex=${invoker.resource_blacklist_regex}" ]
-        if (defined(invoker.resource_blacklist_exceptions)) {
-          args += [ "--resource-blacklist-exceptions=${invoker.resource_blacklist_exceptions}" ]
+            [ "--resource-exclusion-regex=${invoker.resource_exclusion_regex}" ]
+        if (defined(invoker.resource_exclusion_exceptions)) {
+          args += [ "--resource-exclusion-exceptions=${invoker.resource_exclusion_exceptions}" ]
         }
       }
 
@@ -2411,10 +2411,10 @@ if (enable_java_templates) {
           "--output",
           rebase_path(_output_apk, root_build_dir),
         ]
-        if (defined(invoker.shared_resources_whitelist)) {
+        if (defined(invoker.shared_resources_allowlist)) {
           args += [
-            "--r-text-whitelist",
-            rebase_path(invoker.shared_resources_whitelist, root_build_dir),
+            "--r-text-allowlist",
+            rebase_path(invoker.shared_resources_allowlist, root_build_dir),
             "--r-text-path",
             rebase_path(invoker.r_text_out_path, root_build_dir),
           ]
@@ -3005,7 +3005,7 @@ if (enable_java_templates) {
   #    resources for this target.
   #  module_pathmap_path: The path of the pathmap file generated when compiling
   #    the resources for the bundle module, if path shortening is enabled.
-  #  base_whitelist_rtxt_path: The path of the R.txt file containing the
+  #  base_allowlist_rtxt_path: The path of the R.txt file containing the
   #    list of string resources to keep in the base split APK for any bundle
   #    that uses this target.
   #
@@ -3196,7 +3196,7 @@ if (enable_java_templates) {
       forward_variables_from(invoker,
                              [
                                "annotation_processor_deps",
-                               "base_whitelist_rtxt_path",
+                               "base_allowlist_rtxt_path",
                                "gradle_treat_as_prebuilt",
                                "input_jars_paths",
                                "main_class",
