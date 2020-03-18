@@ -140,15 +140,14 @@ declare_args() {
   init_stack_vars =
       !is_android && !use_xcode_clang && (!is_official_build || is_linux)
 
-  # On Linux, debug info is usually embedded in the executable itself. We use
-  # the 'minimal_symbols' config for official builds to limit the size of this
-  # embedded debug info to keep the distributed binaries reasonably small.
-  # However when V8 is built with `clang -g1`, approximately 40MB of debug
-  # data is added to the final executable, mostly in the form of
-  # `DW_TAG_inlined_subroutine` tags. Leaving out those tags reduces the size
-  # of the debug sections to a much more reasonable 5MB while still providing
-  # pretty usable stack traces when the application crashes.
-  no_inline_line_tables = is_linux && is_clang
+  # We use the 'minimal_symbols' config for official builds to limit the size of
+  # debug info to keep the distributed binaries reasonably small. However when
+  # V8 is built with `clang -g1`, approximately 40MB of debug data is added to
+  # the final executable, mostly in the form of `DW_TAG_inlined_subroutine` tags
+  # or its COFF equivalent. Leaving out those tags reduces the size of the debug
+  # sections to a much more reasonable 5MB while still providing pretty usable
+  # stack traces when the application crashes.
+  no_inline_line_tables = is_clang
 }
 
 declare_args() {
@@ -2338,6 +2337,13 @@ config("minimal_symbols") {
       # -gline-tables-only is the same as -g1, but clang-cl only exposes the
       # former.
       cflags += [ "-gline-tables-only" ]
+
+      if (no_inline_line_tables) {
+        cflags += [
+          "-Xclang",
+          "-gno-inline-line-tables",
+        ]
+      }
     }
   } else {
     cflags = []
@@ -2362,14 +2368,6 @@ config("minimal_symbols") {
       cflags += [ "-g1" ]
     }
 
-    # On Linux, debug info is usually embedded in the executable itself. We use
-    # the 'minimal_symbols' config for official builds to limit the size of this
-    # embedded debug info to keep the distributed binaries reasonably small.
-    # However when V8 is built with `clang -g1`, approximately 40MB of debug
-    # data is added to the final executable, mostly in the form of
-    # `DW_TAG_inlined_subroutine` tags. Leaving out those tags reduces the size
-    # of the debug sections to a much more reasonable 5MB while still providing
-    # pretty usable stack traces when the application crashes.
     if (no_inline_line_tables) {
       cflags += [ "-gno-inline-line-tables" ]
     }
