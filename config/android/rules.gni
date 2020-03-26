@@ -4076,6 +4076,7 @@ if (enable_java_templates) {
   #       See also extract_native_libraries.
   #   ignore_proguard_configs: Whether to ignore proguard configs.
   #   strip_resources: Whether to ignore android resources found in the .aar.
+  #   custom_package: Java package for generated R.java files.
   #   extract_native_libraries: Whether to extract .so files found in the .aar.
   #       If the file contains .so, either extract_native_libraries or
   #       ignore_native_libraries must be set.
@@ -4205,6 +4206,7 @@ if (enable_java_templates) {
       android_resources(_res_target_name) {
         forward_variables_from(invoker,
                                [
+                                 "custom_package",
                                  "create_srcjar",
                                  "deps",
                                  "testonly",
@@ -4214,8 +4216,8 @@ if (enable_java_templates) {
           deps = []
         }
         deps += [ ":$_unpack_target_name" ]
-        android_manifest_dep = ":$_unpack_target_name"
         if (!_ignore_manifest) {
+          android_manifest_dep = ":$_unpack_target_name"
           android_manifest = "${_output_path}/AndroidManifest.xml"
         }
         sources = []
