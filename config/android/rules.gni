@@ -3062,11 +3062,11 @@ if (enable_java_templates) {
     _all_native_libs_deps = _native_libs_deps + _loadable_modules_deps +
                             _secondary_abi_native_libs_deps
     if (_all_native_libs_deps != []) {
-      _native_libs_file_arg_dep = ":$_build_config_target"
-      _all_native_libs_deps += [ _native_libs_file_arg_dep ]
+      _native_libs_filearg_dep = ":$_build_config_target"
+      _all_native_libs_deps += [ _native_libs_filearg_dep ]
 
       if (!_is_bundle_module) {
-        _native_libs_file_arg =
+        _native_libs_filearg =
             "@FileArg($_rebased_build_config:native:libraries)"
       }
     }
@@ -3184,7 +3184,7 @@ if (enable_java_templates) {
           # All native libraries are side-loaded, so use a placeholder to force
           # the proper bitness for the app.
           _has_native_libs =
-              defined(invoker.native_libs_filearg) || _loadable_modules != []
+              defined(_native_libs_filearg) || _loadable_modules != []
           if (_has_native_libs && !defined(native_lib_placeholders)) {
             native_lib_placeholders = [ "libfix.crbug.384638.so" ]
           }
@@ -3209,8 +3209,8 @@ if (enable_java_templates) {
             packaged_resources_path = _arsc_resources_path
           }
 
-          if (defined(_native_libs_file_arg)) {
-            native_libs_filearg = _native_libs_file_arg
+          if (defined(_native_libs_filearg)) {
+            native_libs_filearg = _native_libs_filearg
             secondary_abi_native_libs_filearg = "@FileArg($_rebased_build_config:native:secondary_abi_libraries)"
           }
           output_apk_path = _final_apk_path
@@ -3240,9 +3240,9 @@ if (enable_java_templates) {
         if (_proguard_enabled) {
           args += [ "--show-proguard-warning" ]
         }
-        if (defined(_native_libs_file_arg)) {
-          args += [ "--native-libs=$_native_libs_file_arg" ]
-          deps += [ _native_libs_file_arg_dep ]
+        if (defined(_native_libs_filearg)) {
+          args += [ "--native-libs=$_native_libs_filearg" ]
+          deps += [ _native_libs_filearg_dep ]
         }
         if (_loadable_modules != []) {
           _rebased_loadable_modules =
