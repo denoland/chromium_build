@@ -3587,30 +3587,6 @@ if (enable_java_templates) {
           _accumulated_public_deps += [ ":${target_name}__dex" ]
         }
       }
-
-      if (!_is_java_binary) {
-        group(target_name) {
-          forward_variables_from(invoker,
-                                 [
-                                   "assert_no_deps",
-                                   "data",
-                                   "data_deps",
-                                   "deps",
-                                   "visibility",
-                                 ])
-
-          # Export all of our steps as "public", so that all outputs can be used
-          # as inputs to other targets.
-          public_deps = _accumulated_public_deps
-
-          if (defined(_analysis_public_deps)) {
-            if (!defined(data_deps)) {
-              data_deps = []
-            }
-            data_deps += _analysis_public_deps
-          }
-        }
-      }
     }
 
     if (_is_java_binary) {
@@ -3632,24 +3608,21 @@ if (enable_java_templates) {
       _accumulated_public_deps += [ ":${target_name}__java_binary_script" ]
     }
 
-    if (_is_java_binary ||
-        (_is_annotation_processor && !defined(_final_jar_path))) {
-      group(target_name) {
-        forward_variables_from(invoker,
-                               [
-                                 "assert_no_deps",
-                                 "data",
-                                 "deps",
-                                 "data_deps",
-                                 "visibility",
-                               ])
-        public_deps = _accumulated_public_deps
-        if (defined(_analysis_public_deps)) {
-          if (!defined(data_deps)) {
-            data_deps = []
-          }
-          data_deps += _analysis_public_deps
+    group(target_name) {
+      forward_variables_from(invoker,
+                             [
+                               "assert_no_deps",
+                               "data",
+                               "deps",
+                               "data_deps",
+                               "visibility",
+                             ])
+      public_deps = _accumulated_public_deps
+      if (defined(_analysis_public_deps)) {
+        if (!defined(data_deps)) {
+          data_deps = []
         }
+        data_deps += _analysis_public_deps
       }
     }
   }
