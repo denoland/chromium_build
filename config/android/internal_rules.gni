@@ -1375,14 +1375,11 @@ if (enable_java_templates) {
         } else if (enable_incremental_d8 &&
                    !(defined(invoker.disable_incremental) &&
                      invoker.disable_incremental)) {
-          # TODO(crbug.com/1015559): Fix incremental builds when d8 is desugaring.
-          if (!desugar_with_d8) {
-            # Don't use incremental dexing for ProGuarded inputs as a precaution.
-            args += [
-              "--incremental-dir",
-              rebase_path("$target_out_dir/$target_name", root_build_dir),
-            ]
-          }
+          # Don't use incremental dexing for ProGuarded inputs as a precaution.
+          args += [
+            "--incremental-dir",
+            rebase_path("$target_out_dir/$target_name", root_build_dir),
+          ]
         }
 
         if (_enable_multidex) {
