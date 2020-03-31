@@ -1077,7 +1077,7 @@ if (enable_java_templates) {
         inputs += [ _proguard_jar_path ]
       }
 
-      _enable_assert = is_java_debug || dcheck_always_on || report_java_assert
+      _enable_assert = is_java_debug || dcheck_always_on
       if (_enable_assert) {
         # The default for generating dex file format is
         # --force-disable-assertions.
@@ -1474,7 +1474,7 @@ if (enable_java_templates) {
           rebase_path(_r8_path, root_build_dir),
         ]
 
-        _enable_assert = is_java_debug || dcheck_always_on || report_java_assert
+        _enable_assert = is_java_debug || dcheck_always_on
         if (_enable_assert) {
           # The default for generating dex file format is
           # --force-disable-assertions.
@@ -1533,7 +1533,6 @@ if (enable_java_templates) {
   #  build_config:
   #  input_jar_path:
   #  output_jar_path:
-  #  enable_build_hooks:
   #  enable_build_hooks_android:
   #  supports_android:
   #  jacoco_instrument: Use Jacoco-instrumented classes to generate Java
@@ -3213,26 +3212,25 @@ if (enable_java_templates) {
       }
     }
 
-    _enable_build_hooks =
-        _supports_android &&
-        (!defined(invoker.no_build_hooks) || !invoker.no_build_hooks)
-    if (_enable_build_hooks) {
-      _java_full_deps += [ "//build/android/buildhooks:build_hooks_java" ]
-      _java_header_deps +=
-          [ "//build/android/buildhooks:build_hooks_java__header" ]
-    }
-
     # Some testonly targets use their own resources and the code being
     # tested will use custom resources so there's no need to enable this
     # for testonly targets.
     _enable_build_hooks_android =
-        _enable_build_hooks && _requires_android &&
-        (!defined(invoker.testonly) || !invoker.testonly)
+        (!defined(invoker.no_build_hooks) || !invoker.no_build_hooks) &&
+        _requires_android && (!defined(invoker.testonly) || !invoker.testonly)
     if (_enable_build_hooks_android) {
       _java_full_deps +=
           [ "//build/android/buildhooks:build_hooks_android_java" ]
       _java_header_deps +=
           [ "//build/android/buildhooks:build_hooks_android_java__header" ]
+    }
+
+    if (_supports_android &&
+        (!defined(invoker.no_build_hooks) || !invoker.no_build_hooks)) {
+      # Android targets that are desugared rely on the desugar runtime library.
+      _java_full_deps += [ "//third_party/bazel/desugar:desugar_runtime_java" ]
+      _java_header_deps +=
+          [ "//third_party/bazel/desugar:desugar_runtime_java__header" ]
     }
 
     # Don't enable coverage or lint unless the target has some non-generated

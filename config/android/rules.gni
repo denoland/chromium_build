@@ -1918,8 +1918,6 @@ if (enable_java_templates) {
       sources = [ "//base/android/java/templates/BuildConfig.template" ]
       defines = []
 
-      # TODO(agrieve): These two are not target-specific and should be moved
-      #     to BuildHooks.java.
       # Set these even when !use_final_fields so that they have correct default
       # values withnin junit_binary().
       if (is_java_debug || dcheck_always_on) {
