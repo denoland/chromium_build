@@ -858,7 +858,7 @@ if (enable_java_templates) {
         lint_suppressions_file = "//build/android/lint/suppressions.xml"
       }
 
-      _min_sdk_version = 19
+      _min_sdk_version = default_min_sdk_version
       if (defined(invoker.min_sdk_version)) {
         _min_sdk_version = invoker.min_sdk_version
       }
@@ -1146,6 +1146,10 @@ if (enable_java_templates) {
   #   disable_incremental: Disable incremental dexing.
   template("dex") {
     assert(defined(invoker.output))
+    _min_sdk_version = default_min_sdk_version
+    if (defined(invoker.min_sdk_version)) {
+      _min_sdk_version = invoker.min_sdk_version
+    }
 
     _proguard_enabled =
         defined(invoker.proguard_enabled) && invoker.proguard_enabled
@@ -1153,13 +1157,18 @@ if (enable_java_templates) {
         _proguard_enabled && !defined(invoker.proguard_jar_path)
     _enable_multidex =
         !defined(invoker.enable_multidex) || invoker.enable_multidex
-    _enable_main_dex_list =
-        _enable_multidex &&
-        (!defined(invoker.min_sdk_version) || invoker.min_sdk_version < 21)
+    _enable_main_dex_list = _enable_multidex && _min_sdk_version < 21
     if (!_enable_main_dex_list) {
       if (defined(invoker.negative_main_dex_globs)) {
         not_needed(invoker, [ "negative_main_dex_globs" ])
       }
+    }
+
+    # When using d8 to desugar, the dex merge step must not be set to a higher
+    # minSdkVersion than the libraries in order for the proper backported
+    # methods to be included.
+    if (invoker.enable_desugar && defined(invoker.input_dex_filearg)) {
+      _min_sdk_version = default_min_sdk_version
     }
 
     assert(!_proguard_enabled || !(defined(invoker.input_dex_filearg) ||
@@ -1214,6 +1223,7 @@ if (enable_java_templates) {
         args = [
           "--proguard-configs=@FileArg($_rebased_build_config:deps_info:proguard_all_configs)",
           "--input-paths=@FileArg($_rebased_build_config:deps_info:java_runtime_classpath)",
+          "--min-api=$_min_sdk_version",
         ]
         if (defined(invoker.proguard_args)) {
           args += invoker.proguard_args
@@ -1230,13 +1240,6 @@ if (enable_java_templates) {
           _rebased_apply_mapping_path =
               rebase_path(invoker.apply_mapping, root_build_dir)
           args += [ "--apply-mapping=$_rebased_apply_mapping_path" ]
-        }
-
-        if (defined(invoker.min_sdk_version)) {
-          args += [
-            "--min-api",
-            "${invoker.min_sdk_version}",
-          ]
         }
 
         if (_proguarding_with_r8 && _enable_main_dex_list) {
@@ -1368,6 +1371,7 @@ if (enable_java_templates) {
           rebase_path(depfile, root_build_dir),
           "--output",
           rebase_path(outputs[0], root_build_dir),
+          "--min-api=$_min_sdk_version",
         ]
 
         if (_proguard_enabled) {
@@ -1439,13 +1443,6 @@ if (enable_java_templates) {
 
         if (!is_java_debug) {
           args += [ "--release" ]
-        }
-
-        if (defined(invoker.min_sdk_version)) {
-          args += [
-            "--min-api",
-            "${invoker.min_sdk_version}",
-          ]
         }
 
         if (invoker.enable_desugar) {
