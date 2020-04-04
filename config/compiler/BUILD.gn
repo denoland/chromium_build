@@ -1118,7 +1118,7 @@ config("compiler_deterministic") {
     ]
     if (!is_win) {
       # We don't use clang -cc1as on Windows (yet? https://crbug.com/762167)
-      asmflags = [ "-Wa,-fdebug-compilation-dir,." ]
+      # asmflags = [ "-Wa,-fdebug-compilation-dir,." ]
     }
 
     if (is_win && use_lld) {
@@ -2484,6 +2484,6 @@ if (is_win || is_android || (is_chromeos && is_chromeos_device)) {
 config("default_init_stack_vars") {
   cflags = []
   if (init_stack_vars && is_clang && !is_nacl && !using_sanitizer) {
-    cflags += [ "-ftrivial-auto-var-init=pattern" ]
+    # cflags += [ "-ftrivial-auto-var-init=pattern" ]
   }
 }
