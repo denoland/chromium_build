@@ -16,7 +16,7 @@ if (use_atk) {
   assert(use_glib, "use_atk=true requires that use_glib=true")
 }
 
-pkg_config("atk_base") {
+pkg_config("atk") {
   packages = [
     "atk",
     "atk-bridge-2.0",
@@ -37,16 +37,4 @@ pkg_config("atk_base") {
     # of ATK (i.e. < 2.12).
     "ATK_DISABLE_DEPRECATION_WARNINGS",
   ]
-}
-
-# gn orders flags on a target before flags from configs. The default config
-# adds -Wall, and these flags have to be after -Wall -- so they need to
-# come from a config and can't be on the target directly.
-config("atk") {
-  configs = [ ":atk_base" ]
-
-  if (is_clang) {
-    # glib uses the pre-c++11 typedef-as-static_assert hack.
-    cflags = [ "-Wno-unused-local-typedef" ]
-  }
 }
