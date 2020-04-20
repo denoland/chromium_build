@@ -872,7 +872,6 @@ if (enable_java_templates) {
           "$lint_android_sdk_root/platform-tools/api/api-versions.xml"
 
       script = "//build/android/gyp/lint.py"
-      depfile = "$target_gen_dir/$target_name.d"
       inputs = [
         _lint_path,
         _platform_xml_path,
@@ -893,8 +892,6 @@ if (enable_java_templates) {
         "--platform-xml-path",
         rebase_path(_platform_xml_path, root_build_dir),
         "--android-sdk-version=${lint_android_sdk_version}",
-        "--depfile",
-        rebase_path(depfile, root_build_dir),
         "--config-path",
         rebase_path(_suppressions_file, root_build_dir),
         "--product-dir=.",
