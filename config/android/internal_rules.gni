@@ -854,7 +854,7 @@ if (enable_java_templates) {
 
       if (defined(invoker.lint_suppressions_file)) {
         lint_suppressions_file = invoker.lint_suppressions_file
-      } else if (!defined(lint_suppressions_file)) {
+      } else {
         lint_suppressions_file = "//build/android/lint/suppressions.xml"
       }
 
@@ -869,7 +869,7 @@ if (enable_java_templates) {
       _stamp_path = "$target_out_dir/$target_name/build.lint.stamp"
       _suppressions_file = lint_suppressions_file
       _platform_xml_path =
-          "${android_sdk_root}/platform-tools/api/api-versions.xml"
+          "$lint_android_sdk_root/platform-tools/api/api-versions.xml"
 
       script = "//build/android/gyp/lint.py"
       depfile = "$target_gen_dir/$target_name.d"
@@ -879,7 +879,7 @@ if (enable_java_templates) {
         _suppressions_file,
       ]
 
-      # _config_path and _stamp_path are also outputs, but do not list them
+      # _config_path and _result_path are also outputs, but do not list them
       # in order to avoid them being uploaded to swarming as part of isolates.
       # This happens as a side-effect of lint targets being listed as
       # "data_deps" in order to have them run concurrently with other targets.
