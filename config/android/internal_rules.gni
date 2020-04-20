@@ -1150,6 +1150,7 @@ if (enable_java_templates) {
 
     _proguard_enabled =
         defined(invoker.proguard_enabled) && invoker.proguard_enabled
+    _is_dex_merging = defined(invoker.input_dex_filearg)
     _proguarding_with_r8 =
         _proguard_enabled && !defined(invoker.proguard_jar_path)
     _enable_multidex =
@@ -1166,7 +1167,7 @@ if (enable_java_templates) {
 
     # For D8's backported method desugaring to work properly, the dex merge step
     # must not be set to a higher minSdkVersion than it was for the libraries.
-    if (_enable_desugar && defined(invoker.input_dex_filearg)) {
+    if (_enable_desugar && _is_dex_merging) {
       _min_sdk_version = default_min_sdk_version
     }
 
@@ -1174,6 +1175,10 @@ if (enable_java_templates) {
                                        defined(invoker.input_classes_filearg) ||
                                        defined(invoker.input_class_jars)),
            "Cannot explicitly set inputs when proguarding a dex.")
+
+    # Dex merging should not also be dexing.
+    assert(!(_is_dex_merging && defined(invoker.input_classes_filearg)))
+    assert(!(_is_dex_merging && defined(invoker.input_class_jars)))
 
     assert(!(defined(invoker.apply_mapping) && !_proguard_enabled),
            "apply_mapping can only be specified if proguard is enabled.")
@@ -1362,8 +1367,8 @@ if (enable_java_templates) {
                                ])
         script = "//build/android/gyp/dex.py"
         depfile = "$target_gen_dir/$target_name.d"
-        inputs = []
         outputs = [ invoker.output ]
+        inputs = [ _r8_path ]
 
         args = [
           "--depfile",
@@ -1371,6 +1376,8 @@ if (enable_java_templates) {
           "--output",
           rebase_path(outputs[0], root_build_dir),
           "--min-api=$_min_sdk_version",
+          "--r8-jar-path",
+          rebase_path(_r8_path, root_build_dir),
         ]
 
         if (_proguard_enabled) {
@@ -1440,7 +1447,11 @@ if (enable_java_templates) {
           }
         }
 
-        if (!is_java_debug) {
+        # Never compile intemediates with --release in order to:
+        # 1) not require recompiles when toggling is_java_debug,
+        # 2) allow incremental_install=1 to still have local variable
+        #    information even when is_java_debug=false.
+        if (!is_java_debug && _is_dex_merging) {
           args += [ "--release" ]
         }
 
@@ -1462,12 +1473,6 @@ if (enable_java_templates) {
             inputs += [ invoker.final_ijar_path ]
           }
         }
-
-        inputs += [ _r8_path ]
-        args += [
-          "--r8-jar-path",
-          rebase_path(_r8_path, root_build_dir),
-        ]
 
         _enable_assert = is_java_debug || dcheck_always_on
         if (_enable_assert) {
