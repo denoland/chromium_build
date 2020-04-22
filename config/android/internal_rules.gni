@@ -3207,8 +3207,9 @@ if (enable_java_templates) {
           get_path_info(_final_jar_path, "name") + ".interface.jar"
 
       if (_has_sources) {
-        _javac_jar_path = "$target_gen_dir/$_main_target_name.javac.jar"
-        _generated_jar_path = "$target_gen_dir/$_main_target_name.generated.jar"
+        _javac_jar_path = "$target_out_dir/$_main_target_name.javac.jar"
+        _generated_jar_path =
+            "$target_gen_dir/$_main_target_name.generated.srcjar"
       }
 
       if (_is_prebuilt) {
