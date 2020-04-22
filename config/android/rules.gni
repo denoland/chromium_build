@@ -3755,7 +3755,8 @@ if (enable_java_templates) {
         no_build_hooks = true
       }
 
-      if (defined(invoker.proguard_enabled) && invoker.proguard_enabled) {
+      if (defined(invoker.proguard_enabled) && invoker.proguard_enabled &&
+          !incremental_install) {
         # When ProGuard is on, we use ProGuard to combine the under test java
         # code and the test java code. This is to allow us to apply all ProGuard
         # optimizations that we ship with, but not have them break tests. The

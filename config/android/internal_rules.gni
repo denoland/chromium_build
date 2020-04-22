@@ -723,7 +723,8 @@ template("test_runner_script") {
           "@WrappedPath(@FileArg($_rebased_build_config:deps_info:apk_path))",
         ]
       }
-      if (defined(invoker.proguard_enabled) && invoker.proguard_enabled) {
+      if (defined(invoker.proguard_enabled) && invoker.proguard_enabled &&
+          !_incremental_apk) {
         executable_args += [ "--enable-java-deobfuscation" ]
       }
       if (use_jacoco_coverage) {
