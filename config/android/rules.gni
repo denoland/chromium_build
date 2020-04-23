@@ -1857,12 +1857,8 @@ if (enable_java_templates) {
         "*/R\$*.class",
         "*/Manifest.class",
         "*/Manifest\$*.class",
+        "*/GEN_JNI.class",
       ]
-      if (use_hashed_jni_names) {
-        jar_excluded_patterns += [ "J/N.class" ]
-      } else {
-        jar_excluded_patterns += [ "*/GEN_JNI.class" ]
-      }
     }
   }
 
@@ -1916,7 +1912,7 @@ if (enable_java_templates) {
       defines = []
 
       # Set these even when !use_final_fields so that they have correct default
-      # values withnin junit_binary().
+      # values within junit_binary(), which ignores jar_excluded_patterns.
       if (is_java_debug || dcheck_always_on) {
         defines += [ "_DCHECK_IS_ON" ]
       }
