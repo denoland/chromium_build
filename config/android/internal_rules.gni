@@ -970,12 +970,15 @@ if (enable_java_templates) {
       # http://crbug.com/725224. Fix for bots running out of memory.
       pool = "//build/toolchain:link_pool($default_toolchain)"
 
-      _output_path = invoker.output_path
       inputs = [ invoker.build_config ]
       if (defined(invoker.inputs)) {
         inputs += invoker.inputs
       }
-      _mapping_path = "$_output_path.mapping"
+      if (defined(invoker.mapping_path)) {
+        _mapping_path = invoker.mapping_path
+      } else {
+        _mapping_path = "${invoker.output_path}.mapping"
+      }
       if (defined(invoker.proguard_mapping_path)) {
         _mapping_path = invoker.proguard_mapping_path
       }
@@ -986,16 +989,10 @@ if (enable_java_templates) {
       }
 
       depfile = "${target_gen_dir}/${target_name}.d"
-      outputs = [
-        _output_path,
-        _mapping_path,
-      ]
       _rebased_build_config = rebase_path(invoker.build_config, root_build_dir)
       args = [
         "--depfile",
         rebase_path(depfile, root_build_dir),
-        "--output-path",
-        rebase_path(_output_path, root_build_dir),
         "--mapping-output",
         rebase_path(_mapping_path, root_build_dir),
         "--classpath",
@@ -1016,6 +1013,32 @@ if (enable_java_templates) {
         not_needed([ "_proguard_sourcefile_suffix" ])
       }
 
+      if (defined(invoker.modules)) {
+        foreach(_feature_module, invoker.modules) {
+          _rebased_module_build_config =
+              rebase_path(_feature_module.build_config, root_build_dir)
+          args += [
+            "--feature-name=${_feature_module.name}",
+            "--dex-dest=@FileArg($_rebased_module_build_config:final_dex:path)",
+            "--feature-jars=@FileArg($_rebased_module_build_config:deps_info:java_runtime_classpath)",
+          ]
+          deps += [ _feature_module.build_config_target ]
+        }
+        _stamp = "${target_gen_dir}/${target_name}.r8.stamp"
+        args += [
+          "--stamp",
+          rebase_path(_stamp, root_build_dir),
+        ]
+        outputs = [ _stamp ]
+      } else {
+        args += [
+          "--output-path",
+          rebase_path(invoker.output_path, root_build_dir),
+        ]
+        outputs = [ invoker.output_path ]
+      }
+
+      outputs += [ _mapping_path ]
       if (defined(invoker.disable_r8_outlining) &&
           invoker.disable_r8_outlining) {
         args += [ "--disable-outlining" ]
@@ -1034,8 +1057,8 @@ if (enable_java_templates) {
       }
 
       if (defined(invoker.config_output_path)) {
+        # Do not add as an explicit output since it's only for debugging.
         _config_output_path = invoker.config_output_path
-        outputs += [ _config_output_path ]
         args += [
           "--output-config",
           rebase_path(_config_output_path, root_build_dir),
@@ -1148,7 +1171,6 @@ if (enable_java_templates) {
   #   apply_mapping: The path to the ProGuard mapping file to apply.
   #   disable_incremental: Disable incremental dexing.
   template("dex") {
-    assert(defined(invoker.output))
     _min_sdk_version = default_min_sdk_version
     if (defined(invoker.min_sdk_version)) {
       _min_sdk_version = invoker.min_sdk_version
@@ -1177,6 +1199,8 @@ if (enable_java_templates) {
       _min_sdk_version = default_min_sdk_version
     }
 
+    assert(defined(invoker.output) ||
+           (_proguarding_with_r8 && defined(invoker.modules)))
     assert(!_proguard_enabled || !(defined(invoker.input_dex_filearg) ||
                                        defined(invoker.input_classes_filearg) ||
                                        defined(invoker.input_class_jars)),
@@ -1199,9 +1223,10 @@ if (enable_java_templates) {
 
     if (_proguard_enabled) {
       if (_proguarding_with_r8) {
-        _proguard_output_path = invoker.output
+        if (defined(invoker.output)) {
+          _proguard_output_path = invoker.output
+        }
         _proguard_target_name = target_name
-        _proguard_config_output_path = "$_proguard_output_path.proguard_flags"
       } else {
         _proguard_output_path = invoker.output + ".proguard.jar"
         _proguard_target_name = "${target_name}__proguard"
@@ -1214,6 +1239,8 @@ if (enable_java_templates) {
                                  "disable_checkdiscard",
                                  "disable_r8_outlining",
                                  "deps",
+                                 "failed_proguard_expectation_file",
+                                 "modules",
                                  "proguard_expectations_file",
                                  "proguard_jar_path",
                                  "proguard_mapping_path",
@@ -1267,9 +1294,16 @@ if (enable_java_templates) {
           inputs += [ _main_dex_rules ]
         }
 
-        output_path = _proguard_output_path
-        if (_proguarding_with_r8) {
-          config_output_path = _proguard_config_output_path
+        if (defined(_proguard_output_path)) {
+          output_path = _proguard_output_path
+          if (_proguarding_with_r8) {
+            config_output_path = "$_proguard_output_path.proguard_flags"
+          }
+        } else {
+          mapping_path = "$target_out_dir/$target_name.mapping"
+          if (_proguarding_with_r8) {
+            config_output_path = "$target_out_dir/$target_name.proguard_flags"
+          }
         }
       }
     }
