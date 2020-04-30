@@ -1137,9 +1137,11 @@ def _OnStaleMd5(options):
       temp_dir=path, keep_files=bool(debug_temp_resources_dir)) as build:
     manifest_package_name = _PackageApk(options, build)
 
-    # If --shared-resources-allowlist is used, the all resources listed in
-    # the corresponding R.txt file will be non-final, and an onResourcesLoaded()
-    # will be generated to adjust them at runtime.
+    # If --shared-resources-allowlist is used, all the resources listed in the
+    # corresponding R.txt file will be non-final, and an onResourcesLoaded()
+    # will be generated to adjust them at runtime. If --shared-resources is used
+    # then ignore the allowlist, since there is never a case where those
+    # resources should be final.
     #
     # Otherwise, if --shared-resources is used, the all resources will be
     # non-final, and an onResourcesLoaded() method will be generated too.
@@ -1147,7 +1149,7 @@ def _OnStaleMd5(options):
     # Otherwise, all resources will be final, and no method will be generated.
     #
     rjava_build_options = resource_utils.RJavaBuildOptions()
-    if options.shared_resources_allowlist:
+    if options.shared_resources_allowlist and not options.shared_resources:
       rjava_build_options.ExportSomeResources(
           options.shared_resources_allowlist)
       rjava_build_options.GenerateOnResourcesLoaded()
