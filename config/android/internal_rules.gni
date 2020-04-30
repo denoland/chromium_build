@@ -2477,18 +2477,44 @@ if (enable_java_templates) {
       }
       if (defined(invoker.verify_manifest_target_name)) {
         _target_src_dir = get_label_info(":$target_name", "dir")
-        _expected_manifest =
-            "$_target_src_dir/java/" +
-            "${invoker.verify_manifest_target_name}.AndroidManifest.expected"
-        inputs += [ _expected_manifest ]
+        if (defined(invoker.expected_manifest_base_expectation)) {
+          args += [
+            "--expected-manifest-base-expectation",
+            rebase_path(invoker.expected_manifest_base_expectation,
+                        root_build_dir),
+          ]
+          inputs += [ invoker.expected_manifest_base_expectation ]
+        }
+
+        # When invoker.expected_manifest_base_expectation is defined, we use a
+        # different file extension to indicate that the expected file is a diff
+        # file.
+        # In addition, we set expected_manifest_base_expectation only for
+        # internal targets, therefore, the expected file is in a different
+        # directory.
+        if (defined(invoker.expected_manifest_base_expectation)) {
+          _expected_file =
+              "$_target_src_dir/" +
+              "${invoker.verify_manifest_target_name}.AndroidManifest" +
+              ".diff.expected"
+        } else {
+          _expected_file =
+              "$_target_src_dir/java/" +
+              "${invoker.verify_manifest_target_name}.AndroidManifest.expected"
+        }
+
+        inputs += [ _expected_file ]
+        args += [
+          "--expected-file",
+          rebase_path(_expected_file, root_build_dir),
+        ]
+
         _normalized_output = "${invoker.android_manifest}.normalized"
         outputs += [ _normalized_output ]
         _manifest_expectations_failure_filepath =
             "$android_configuration_failure_dir/" +
             "${invoker.verify_manifest_target_name}.AndoridManifest.failed"
         args += [
-          "--android-manifest-expected",
-          rebase_path(_expected_manifest, root_build_dir),
           "--android-manifest-normalized",
           rebase_path(_normalized_output, root_build_dir),
           "--android-manifest-expectations-failure-file",

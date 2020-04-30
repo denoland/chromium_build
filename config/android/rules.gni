@@ -2471,6 +2471,8 @@ if (enable_java_templates) {
       if (defined(invoker.verify_manifest) && invoker.verify_manifest &&
           !is_java_debug) {
         verify_manifest_target_name = _template_name
+        forward_variables_from(invoker,
+                               [ "expected_manifest_base_expectation" ])
       }
 
       if (defined(_resource_ids_provider_dep)) {
@@ -3458,6 +3460,7 @@ if (enable_java_templates) {
                                "uncompress_shared_libraries",
                                "use_chromium_linker",
                                "verify_manifest",
+                               "expected_manifest_base_expectation",
                                "verify_native_libs_and_assets",
                                "version_code",
                                "version_name",
@@ -3579,6 +3582,7 @@ if (enable_java_templates) {
                                "use_chromium_linker",
                                "use_modern_linker",
                                "verify_manifest",
+                               "expected_manifest_base_expectation",
                                "version_code",
                                "version_name",
                              ])
