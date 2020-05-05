@@ -107,11 +107,6 @@ declare_args() {
   # Turn this on to have the compiler output extra timing information.
   compiler_timing = false
 
-  # Set to true to pass --no-rosegment to lld. This is a workaround
-  # for a KI issue in Valgrind,
-  # https://bugs.kde.org/show_bug.cgi?id=384727
-  ro_segment_workaround_for_valgrind = false
-
   # Turn this on to use ghash feature of lld for faster debug link on Windows.
   # http://blog.llvm.org/2018/01/improving-link-time-on-windows-with.html
   use_ghash = true
@@ -139,6 +134,15 @@ declare_args() {
   # 'use_xcode_clang' may call old clang.
   init_stack_vars =
       !is_android && !use_xcode_clang && (!is_official_build || is_linux)
+
+  # This argument is to control whether enabling text section splitting in the
+  # final binary. When enabled, the separated text sections with prefix
+  # '.text.hot', '.text.unlikely', '.text.startup' and '.text.exit' will not be
+  # merged to '.text' section. This allows us to identify the hot code section
+  # ('.text.hot') in the binary which may be mlocked or mapped to huge page to
+  # reduce TLB misses which gives performance improvement on cpu usage.
+  # The gold linker by default has text section splitting enabled.
+  use_text_section_splitting = false
 
   # We use the 'minimal_symbols' config for official builds to limit the size of
   # debug info to keep the distributed binaries reasonably small. However when
@@ -307,9 +311,7 @@ config("compiler") {
     }
 
     # Linker warnings.
-    if (fatal_linker_warnings && !(is_chromeos && current_cpu == "arm") &&
-        !is_mac && !is_ios && current_os != "aix") {
-      # TODO(jochen): Enable this on chromeos on arm. http://crbug.com/356580
+    if (fatal_linker_warnings && !is_mac && !is_ios && current_os != "aix") {
       ldflags += [ "-Wl,--fatal-warnings" ]
     }
     if (fatal_linker_warnings && (is_mac || is_ios)) {
@@ -494,6 +496,12 @@ config("compiler") {
     } else {
       ldflags += [ "-Wl,--color-diagnostics" ]
     }
+  }
+
+  # Enable text section splitting only on linux when using lld for now. Other
+  # platforms can be added later if needed.
+  if (is_linux && use_lld && use_text_section_splitting) {
+    ldflags += [ "-Wl,-z,keep-text-section-prefix" ]
   }
 
   if (is_clang && !is_nacl && !use_xcode_clang) {
@@ -693,11 +701,9 @@ config("compiler") {
     }
   }
 
-  # Pass flag to LLD to work around issue in Valgrind related to
-  # location of debug symbols. This is also enabled for Android
-  # builds to allow debuggerd to properly symbolize stack crashes
-  # on this platform (http://crbug.com/919499).
-  if (use_lld && (ro_segment_workaround_for_valgrind || is_android)) {
+  # Pass flag to LLD so Android builds can allow debuggerd to properly symbolize
+  # stack crashes (http://crbug.com/919499).
+  if (use_lld && is_android) {
     ldflags += [ "-Wl,--no-rosegment" ]
   }
 
@@ -1374,8 +1380,6 @@ config("default_warnings") {
       "/wd4305",  # 'identifier' : truncation from 'type1' to 'type2'
       "/wd4389",  # 'operator' : signed/unsigned mismatch
 
-      # http://crbug.com/346399 - Unreachable code suppression waiting on Clang
-      # -Wunreachable-code.
       "/wd4702",  # unreachable code
 
       # http://crbug.com/848979 - MSVC is more conservative than Clang with
@@ -1525,30 +1529,10 @@ config("default_warnings") {
           "-Wno-non-c-typedef-for-linkage",
         ]
 
-        if (is_android) {
-          cflags += [
-            # TODO(https://crbug.com/1016947) Clean up, enable.
-            "-Wno-bitwise-conditional-parentheses",
-          ]
-        }
-
         cflags_c += [
           # TODO(https://crbug.com/995993): Clean up and enable.
           "-Wno-implicit-fallthrough",
-
-          # TODO(https://crbug.com/1054220): This used to be a C++-only
-          # warning, but it was extended to .C files as well, where it
-          # caught a cast of pointer to long in third-party that isn't
-          # valid on Windows, which is LLP64.
-          "-Wno-microsoft-cast",
         ]
-
-        if (llvm_force_head_revision && is_win) {
-          cflags += [
-            # TODO(https://crbug.com/1059231): Clean up, enable.
-            "-Wno-pointer-to-int-cast",
-          ]
-        }
       }
     }
   }
@@ -1611,6 +1595,12 @@ config("chromium_code") {
       # base/compiler_specific.h
       "-Wimplicit-fallthrough",
     ]
+
+    # TODO(thakis): Enable this more often, https://crbug.com/346399
+    # use_libfuzzer: https://crbug.com/1063180
+    if (!is_nacl && !use_libfuzzer) {
+      cflags += [ "-Wunreachable-code" ]
+    }
 
     # Thread safety analysis is broken under nacl: https://crbug.com/982423.
     if (!is_nacl) {
@@ -1991,9 +1981,15 @@ config("default_stack_frames") {
 # Default "optimization on" config.
 config("optimize") {
   if (is_win) {
-    # Favor size over speed, /O1 must be before the common flags.
-    # /O1 implies /Os and /GF.
-    cflags = [ "/O1" ] + common_optimize_on_cflags + [ "/Oi" ]
+    if (chrome_pgo_phase != 2) {
+      # Favor size over speed, /O1 must be before the common flags.
+      # /O1 implies /Os and /GF.
+      cflags = [ "/O1" ] + common_optimize_on_cflags + [ "/Oi" ]
+    } else {
+      # PGO requires all translation units to be compiled with /O2. The actual
+      # optimization level will be decided based on the profiling data.
+      cflags = [ "/O2" ] + common_optimize_on_cflags + [ "/Oi" ]
+    }
   } else if (optimize_for_size && !is_nacl) {
     # Favor size over speed.
     # TODO(crbug.com/718650): Fix -Os in PNaCl compiler and remove the is_nacl

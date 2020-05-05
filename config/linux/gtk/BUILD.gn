@@ -22,8 +22,12 @@ pkg_config("gtk_internal_config") {
 
 group("gtk") {
   visibility = [
-    # This is the only target in Chrome that should depend on GTK.
-    "//chrome/browser/ui/gtk:*",
+    # These are the only directories that should depend on GTK.
+    "//ui/gtk:*",
+    "//ui/gtk/x",
+
+    # This should probably be moved into //ui/gtk.
+    "//ui/ozone/platform/wayland",
 
     # These are all for WebRTC.
     "//examples:peerconnection_client",
@@ -46,6 +50,6 @@ pkg_config("gtkprint_internal_config") {
 }
 
 group("gtkprint") {
-  visibility = [ "//chrome/browser/ui/gtk:*" ]
+  visibility = [ "//ui/gtk:*" ]
   public_configs = [ ":gtkprint_internal_config" ]
 }

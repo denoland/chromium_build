@@ -22,6 +22,12 @@ Still reading?
   Note: PRODUCT_DIR will be substituted at run-time with actual
   directory path (e.g. out/Debug)
 -->
+  <issue id="AcceptsUserCertificates">
+    <!-- See https://crbug.com/827265 and comment in the file for context. -->
+    <ignore regexp="chrome/android/java/res/xml/network_security_config.xml"/>
+    <ignore regexp="android_webview/tools/system_webview_shell/apk/res/xml/network_security_config.xml"/>
+    <ignore regexp="test"/>
+  </issue>
   <!-- AllowBackup defaults to true, and causes a lint warning if not explicitly set. -->
   <issue id="AllowBackup">
     <ignore path="AndroidManifest.xml"/>
@@ -32,6 +38,7 @@ Still reading?
   <issue id="Assert" severity="ignore"/>
   <issue id="AuthLeak" severity="Error">
     <ignore regexp="chrome/android/javatests"/>
+    <ignore regexp="Test.java"/>
   </issue>
   <issue id="BadHostnameVerifier" severity="Error"/>
   <issue id="ButtonOrder" severity="Error">
@@ -166,6 +173,12 @@ Still reading?
     <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd"/>
     <ignore regexp="components/browser_ui/strings/android/browser_ui_strings_grd"/>
   </issue>
+  <issue id="InsecureBaseConfiguration">
+    <!-- See https://crbug.com/827265 and comment in the file for context. -->
+    <ignore regexp="chrome/android/java/res/xml/network_security_config.xml"/>
+    <ignore regexp="android_webview/tools/system_webview_shell/apk/res/xml/network_security_config.xml"/>
+    <ignore regexp="test"/>
+  </issue>
   <issue id="InconsistentArrays" severity="Error">
     <ignore regexp="android_webview/locale_paks.resources.zip/values/locale-paks.xml"/>
     <ignore regexp="chrome/android/chrome_locale_paks.resources.zip/values/locale-paks.xml"/>
@@ -273,13 +286,15 @@ Still reading?
     <ignore regexp="chrome/android/java/res/drawable/zoom_in.xml"/>
     <!--TODO(crbug.com/1044658): This suppression was added blindly, and needs investigated.-->
     <ignore regexp="chrome/android/java/res/drawable/zoom_out.xml"/>
-    <!--TODO(crbug.com/1044658): This suppression was added blindly, and needs investigated.-->
-    <ignore regexp="components/permissions/android/res/drawable/ic_infobar_nfc.xml"/>
   </issue>
   <!-- This warning just adds a lot of false positives. -->
   <issue id="ObsoleteSdkInt" severity="ignore"/>
   <issue id="OldTargetApi">
     <ignore path="AndroidManifest.xml"/>
+  </issue>
+  <issue id="OnClick">
+    <!-- False positive, see: http://issuetracker.google.com/148523770 for similar issue. -->
+    <ignore regexp="tools/android/audio_focus_grabber/java/res/layout/audio_focus_grabber_activity.xml"/>
   </issue>
   <issue id="Overdraw" severity="ignore"/>
   <issue id="PackageManagerGetSignatures">
@@ -339,10 +354,6 @@ Still reading?
   </issue>
   <issue id="TypographyDashes" severity="Error">
     <ignore regexp="chrome/app/policy/android/values-v21/restriction_values.xml"/>
-  </issue>
-  <!-- If no space is after ... in a translation grit does not automatically change it to … -->
-  <issue id="TypographyEllipsis" severity="Error">
-    <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd.resources.zip/values-az/android_chrome_strings.xml"/>
   </issue>
   <!-- Typos check disabled due to lint bug: http://crbug.com/671170 -->
   <issue id="Typos" severity="ignore"/>
@@ -414,6 +425,11 @@ Still reading?
     <ignore regexp="The resource `R.string.tab_suggestion_close_stale_message` appears to be unused"/>
     <ignore regexp="The resource `R.string.tab_suggestion_close_tab_action_button` appears to be unused"/>
     <ignore regexp="The resource `R.string.tab_suggestion_review_button` appears to be unused"/>
+    <!-- crbug.com/1076295 remove this line and the following four lines after the bug is resolved -->
+    <ignore regexp="The resource `R.string.undo_tab_strip_closure_message` appears to be unused"/>
+    <ignore regexp="The resource `R.string.tab_strip_info_bar_question` appears to be unused"/>
+    <ignore regexp="The resource `R.string.tab_strip_info_bar_no_reshow` appears to be unused"/>
+    <ignore regexp="The resource `R.string.tab_strip_info_bar_reshow` appears to be unused"/>
     <!-- Old-style and new-style WebAPKs use same resources for simplicity. Old-style WebAPKs do
          not use R.style.SplashTheme but new-style WebAPKs do.
          TODO(crbug.com/971254): Remove suppression once old-style WebAPKs are deprecated. -->
@@ -424,14 +440,18 @@ Still reading?
     <ignore regexp="android_webview/test/shell/res/raw/resource_file.html"/>
     <ignore regexp="android_webview/test/shell/res/raw/resource_icon.png"/>
     <ignore regexp="android_webview/tools/automated_ui_tests/java/res/layout/"/>
-    <!-- TODO(crbug.com/1017190): Remove the following 7 suppressions once we lint entire app rather
+    <!-- TODO(crbug.com/1017190): Remove the following 11 suppressions once we lint entire app rather
          than each individual target -->
     <ignore regexp="components/browser_ui/strings/android/browser_ui_strings_grd"/>
+    <ignore regexp="chrome/browser/download/android/java/res"/>
+    <ignore regexp="The resource `R.drawable.ic_file_download_36dp` appears to be unused"/>
+    <ignore regexp="The resource `R.drawable.ic_play_arrow_white_24dp` appears to be unused"/>
     <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd"/>
     <ignore regexp="The resource `R.drawable.*_expand_.*` appears to be unused"/>
     <ignore regexp="The resource `R.drawable.btn_close` appears to be unused"/>
     <ignore regexp="The resource `R.drawable.ic_more_vert_24dp_on_dark_bg` appears to be unused"/>
     <ignore regexp="The resource `R.layout.permission_dialog` appears to be unused"/>
+    <ignore regexp="components/browser_ui/styles/android/java/res"/>
     <ignore regexp="components/permissions/android/res/drawable"/>
     <!-- 1 resource used by android tv to generate resources.zip file -->
     <ignore regexp="chromecast/internal/shell/browser/android/java/res/drawable-hdpi/ic_settings_cast.png"/>
@@ -448,6 +468,10 @@ Still reading?
     <ignore regexp="chrome/android/java/res/values/styles.xml"/>
     <!--TODO(crbug.com/1044658): This suppression was added blindly, and needs investigated.-->
     <ignore regexp="chrome/android/java/res/layout/tab_switcher_action_menu_layout.xml"/>
+    <!--TODO(crbug.com/1052375): Remove this suppression once ConnectionInfoPopAndroid moves to components.-->
+    <ignore regexp="components/page_info/android/java/res/drawable-hdpi/pageinfo_*"/>
+    <!--TODO(crbug.com/1052375): Remove this suppression once PermissionParamsListBuilder moves to components.-->
+    <ignore regexp="The resource `R.string.page_info_permission_ads_subtitle` appears to be unused" />
   </issue>
   <issue id="UseCompoundDrawables">
     <!-- Upscaling 24dp to 48dp doesn't work as expected with a TextView compound drawable. -->

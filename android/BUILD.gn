@@ -16,6 +16,13 @@ if (enable_java_templates) {
     create_cache = true
   }
 
+  if (enable_jdk_library_desugaring) {
+    dex_jdk_libs("all_jdk_libs") {
+      output = "$target_out_dir/$target_name.l8.dex"
+      min_sdk_version = default_min_sdk_version
+    }
+  }
+
   # Write to a file some GN vars that are useful to scripts that use the output
   # directory. Format is chosen as easliy importable by both python and bash.
   _lines = [
@@ -76,7 +83,7 @@ python_library("test_runner_py") {
 
   # Proguard is needed only when using apks (rather than native executables).
   if (enable_java_templates) {
-    deps = [ "//third_party/proguard:proguard603_java" ]
+    deps = [ "//build/android/stacktrace:java_deobfuscate" ]
   }
 }
 

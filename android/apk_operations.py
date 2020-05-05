@@ -33,12 +33,14 @@ from devil.android import device_errors
 from devil.android import device_utils
 from devil.android import flag_changer
 from devil.android.sdk import adb_wrapper
+from devil.android.sdk import build_tools
 from devil.android.sdk import intent
 from devil.android.sdk import version_codes
 from devil.utils import run_tests_helper
 
 _DIR_SOURCE_ROOT = os.path.normpath(
     os.path.join(os.path.dirname(__file__), '..', '..'))
+_JAVA_HOME = os.path.join(_DIR_SOURCE_ROOT, 'third_party', 'jdk', 'current')
 
 with devil_env.SysPath(
     os.path.join(_DIR_SOURCE_ROOT, 'third_party', 'colorama', 'src')):
@@ -1460,12 +1462,7 @@ To disable filtering, (but keep coloring), use --verbose.
   def Run(self):
     deobfuscate = None
     if self.args.proguard_mapping_path and not self.args.no_deobfuscate:
-      try:
-        deobfuscate = deobfuscator.Deobfuscator(self.args.proguard_mapping_path)
-      except OSError:
-        sys.stderr.write('Error executing "bin/java_deobfuscate". '
-                         'Did you forget to build it?\n')
-        sys.exit(1)
+      deobfuscate = deobfuscator.Deobfuscator(self.args.proguard_mapping_path)
 
     stack_script_context = _StackScriptContext(
         self.args.output_directory,
@@ -1571,6 +1568,73 @@ class _CompileDexCommand(_Command):
   def Run(self):
     _RunCompileDex(self.devices, self.args.package_name,
                    self.args.compilation_filter)
+
+
+class _PrintCertsCommand(_Command):
+  name = 'print-certs'
+  description = 'Print info about certificates used to sign this APK.'
+  need_device_args = False
+  needs_apk_helper = True
+
+  def _RegisterExtraArgs(self, group):
+    group.add_argument(
+        '--full-cert',
+        action='store_true',
+        help=("Print the certificate's full signature, Base64-encoded. "
+              "Useful when configuring an Android image's "
+              "config_webview_packages.xml."))
+
+  def Run(self):
+    keytool = os.path.join(_JAVA_HOME, 'bin', 'keytool')
+    if self.is_bundle:
+      # Bundles are not signed until converted to .apks. The wrapper scripts
+      # record which key will be used to sign though.
+      with tempfile.NamedTemporaryFile() as f:
+        logging.warning('Bundles are not signed until turned into .apk files.')
+        logging.warning('Showing signing info based on associated keystore.')
+        cmd = [
+            keytool, '-exportcert', '-keystore',
+            self.bundle_generation_info.keystore_path, '-storepass',
+            self.bundle_generation_info.keystore_password, '-alias',
+            self.bundle_generation_info.keystore_alias, '-file', f.name
+        ]
+        subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+        cmd = [keytool, '-printcert', '-file', f.name]
+        logging.warning('Running: %s', ' '.join(cmd))
+        subprocess.check_call(cmd)
+        if self.args.full_cert:
+          # Redirect stderr to hide a keytool warning about using non-standard
+          # keystore format.
+          full_output = subprocess.check_output(
+              cmd + ['-rfc'], stderr=subprocess.STDOUT)
+    else:
+      cmd = [
+          build_tools.GetPath('apksigner'), 'verify', '--print-certs',
+          '--verbose', self.apk_helper.path
+      ]
+      logging.warning('Running: %s', ' '.join(cmd))
+      stdout = subprocess.check_output(cmd)
+      print(stdout)
+      if self.args.full_cert:
+        if 'v1 scheme (JAR signing): true' not in stdout:
+          raise Exception(
+              'Cannot print full certificate because apk is not V1 signed.')
+
+        cmd = [keytool, '-printcert', '-jarfile', self.apk_helper.path, '-rfc']
+        # Redirect stderr to hide a keytool warning about using non-standard
+        # keystore format.
+        full_output = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+
+    if self.args.full_cert:
+      m = re.search(
+          r'-+BEGIN CERTIFICATE-+([\r\n0-9A-Za-z+/=]+)-+END CERTIFICATE-+',
+          full_output, re.MULTILINE)
+      if not m:
+        raise Exception('Unable to parse certificate:\n{}'.format(full_output))
+      signature = re.sub(r'[\r\n]+', '', m.group(1))
+      print()
+      print('Full Signature:')
+      print(signature)
 
 
 class _ProfileCommand(_Command):
@@ -1720,6 +1784,7 @@ _COMMANDS = [
     _MemUsageCommand,
     _ShellCommand,
     _CompileDexCommand,
+    _PrintCertsCommand,
     _ProfileCommand,
     _RunCommand,
     _StackCommand,
@@ -1749,14 +1814,23 @@ def _ParseArgs(parser, from_wrapper_script, is_bundle):
   return parser.parse_args(argv)
 
 
-def _RunInternal(parser, output_directory=None, bundle_generation_info=None):
+def _RunInternal(parser,
+                 output_directory=None,
+                 additional_apk_paths=None,
+                 bundle_generation_info=None):
   colorama.init()
-  parser.set_defaults(output_directory=output_directory)
+  parser.set_defaults(
+      additional_apk_paths=additional_apk_paths,
+      output_directory=output_directory)
   from_wrapper_script = bool(output_directory)
   args = _ParseArgs(parser, from_wrapper_script, bool(bundle_generation_info))
   run_tests_helper.SetLogLevel(args.verbose_count)
   if bundle_generation_info:
     args.command.RegisterBundleGenerationInfo(bundle_generation_info)
+  if args.additional_apk_paths:
+    for path in additional_apk_paths:
+      if not path or not os.path.exists(path):
+        raise Exception('Invalid additional APK path "{}"'.format(path))
   args.command.ProcessArgs(args)
   args.command.Run()
   # Incremental install depends on the cache being cleared when uninstalling.
@@ -1772,17 +1846,16 @@ def Run(output_directory, apk_path, additional_apk_paths, incremental_json,
   parser = argparse.ArgumentParser()
   exists_or_none = lambda p: p if p and os.path.exists(p) else None
 
-  for path in additional_apk_paths:
-    if not path or not os.path.exists(path):
-      raise Exception('Invalid additional APK path "{}"'.format(path))
   parser.set_defaults(
       command_line_flags_file=command_line_flags_file,
       target_cpu=target_cpu,
       apk_path=exists_or_none(apk_path),
-      additional_apk_paths=additional_apk_paths,
       incremental_json=exists_or_none(incremental_json),
       proguard_mapping_path=proguard_mapping_path)
-  _RunInternal(parser, output_directory=output_directory)
+  _RunInternal(
+      parser,
+      output_directory=output_directory,
+      additional_apk_paths=additional_apk_paths)
 
 
 def RunForBundle(output_directory, bundle_path, bundle_apks_path,
@@ -1821,23 +1894,22 @@ def RunForBundle(output_directory, bundle_path, bundle_apks_path,
       keystore_alias=keystore_alias,
       system_image_locales=system_image_locales)
 
-  for path in additional_apk_paths:
-    if not path or not os.path.exists(path):
-      raise Exception('Invalid additional APK path "{}"'.format(path))
   parser = argparse.ArgumentParser()
   parser.set_defaults(
-      additional_apk_paths=additional_apk_paths,
       package_name=package_name,
       command_line_flags_file=command_line_flags_file,
       proguard_mapping_path=proguard_mapping_path,
       target_cpu=target_cpu)
-  _RunInternal(parser, output_directory=output_directory,
-               bundle_generation_info=bundle_generation_info)
+  _RunInternal(
+      parser,
+      output_directory=output_directory,
+      additional_apk_paths=additional_apk_paths,
+      bundle_generation_info=bundle_generation_info)
 
 
 def main():
   devil_chromium.Initialize()
-  _RunInternal(argparse.ArgumentParser(), output_directory=None)
+  _RunInternal(argparse.ArgumentParser())
 
 
 if __name__ == '__main__':

@@ -4,8 +4,6 @@
 
 package org.chromium.bytecode;
 
-import static org.objectweb.asm.ClassWriter.COMPUTE_FRAMES;
-
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
@@ -45,10 +43,6 @@ import java.util.zip.ZipOutputStream;
 /**
  * Java application that takes in an input jar, performs a series of bytecode transformations,
  * and generates an output jar.
- *
- * Two types of transformations are performed:
- * 1) Enabling assertions via {@link AssertionEnablerClassAdapter}
- * 2) Providing support for custom resources via {@link CustomResourcesClassAdapter}
  */
 class ByteCodeProcessor {
     private static final String CLASS_FILE_SUFFIX = ".class";
@@ -56,8 +50,6 @@ class ByteCodeProcessor {
     private static final int BUFFER_SIZE = 16384;
     private static boolean sVerbose;
     private static boolean sIsPrebuilt;
-    private static boolean sShouldAssert;
-    private static boolean sShouldUseCustomResources;
     private static boolean sShouldUseThreadAnnotations;
     private static boolean sShouldCheckClassPath;
     private static ClassLoader sDirectClassPathClassLoader;
@@ -100,16 +92,7 @@ class ByteCodeProcessor {
                     sFullClassPathClassLoader, sFullClassPathJarPaths, sIsPrebuilt, sVerbose);
         }
 
-        ClassWriter writer;
-        if (sShouldUseCustomResources) {
-            // Use the COMPUTE_FRAMES flag to have asm figure out the stack map frames.
-            // This is necessary because GCMBaseIntentService in android_gcm_java contains
-            // incorrect stack map frames. This option slows down processing time by 2x.
-            writer = new CustomClassLoaderClassWriter(
-                    sFullClassPathClassLoader, reader, COMPUTE_FRAMES);
-        } else {
-            writer = new ClassWriter(reader, 0);
-        }
+        ClassWriter writer = new ClassWriter(reader, 0);
         ClassVisitor chain = writer;
         /* DEBUGGING:
          To see objectweb.asm code that will generate bytecode for a given class:
@@ -128,13 +111,6 @@ class ByteCodeProcessor {
         */
         if (sShouldUseThreadAnnotations) {
             chain = new ThreadAssertionClassAdapter(chain);
-        }
-        if (sShouldAssert) {
-            chain = new AssertionEnablerClassAdapter(chain);
-        }
-        if (sShouldUseCustomResources) {
-            chain = new CustomResourcesClassAdapter(
-                    chain, reader.getClassName(), reader.getSuperName(), sFullClassPathClassLoader);
         }
         reader.accept(chain, 0);
         byte[] patchedByteCode = writer.toByteArray();
@@ -252,8 +228,6 @@ class ByteCodeProcessor {
         String outputJarPath = args[currIndex++];
         sVerbose = args[currIndex++].equals("--verbose");
         sIsPrebuilt = args[currIndex++].equals("--is-prebuilt");
-        sShouldAssert = args[currIndex++].equals("--enable-assert");
-        sShouldUseCustomResources = args[currIndex++].equals("--enable-custom-resources");
         sShouldUseThreadAnnotations = args[currIndex++].equals("--enable-thread-annotations");
         sShouldCheckClassPath = args[currIndex++].equals("--enable-check-class-path");
         int sdkJarsLength = Integer.parseInt(args[currIndex++]);
