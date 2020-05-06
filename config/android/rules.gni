@@ -3331,6 +3331,7 @@ if (enable_java_templates) {
     group(target_name) {
       forward_variables_from(invoker,
                              [
+                               "assert_no_deps",
                                "data",
                                "data_deps",
                                "metadata",
@@ -3395,6 +3396,7 @@ if (enable_java_templates) {
                                "annotation_processor_deps",
                                "apk_under_test",
                                "app_as_shared_lib",
+                               "assert_no_deps",
                                "bundles_supported",
                                "chromium_code",
                                "command_line_flags_file",
@@ -3535,6 +3537,7 @@ if (enable_java_templates) {
                                "android_manifest_dep",
                                "annotation_processor_deps",
                                "app_as_shared_lib",
+                               "assert_no_deps",
                                "base_module_target",
                                "bundle_target",
                                "chromium_code",
