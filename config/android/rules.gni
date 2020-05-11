@@ -3358,7 +3358,6 @@ if (enable_java_templates) {
                                [
                                  "manifest_package",
                                  "min_sdk_version",
-                                 "lint_suppressions_file",
                                ])
         build_config = _build_config
         deps = [
