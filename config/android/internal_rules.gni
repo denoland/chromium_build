@@ -3235,10 +3235,6 @@ if (enable_java_templates) {
   #    any other target that has requires_android.
   #  include_java_resources: Optional. If True, include Java (not Android)
   #    resources into final .jar file.
-  #  android_manifest_for_lint: Optional path to Android manifest to use
-  #    if Android linting is enabled. Ignored for 'android_apk' types
-  #    (since the value of android_manifest will be used instead).
-  #  lint_suppressions_file: Optional lint suppressions input file.
   #  jar_excluded_patterns: Optional list of .class file patterns to exclude
   #    from the final .jar file.
   #  jar_included_patterns: Optional list of .class file patterns to include
@@ -3603,13 +3599,6 @@ if (enable_java_templates) {
     if (_has_sources || _is_prebuilt) {
       _header_target_name = "${target_name}__header"
     }
-
-    # Temporary to avoid downstream breakage: https://crbug.com/1017190
-    not_needed(invoker,
-               [
-                 "min_sdk_version",
-                 "android_manifest_for_lint",
-               ])
 
     if (_has_sources) {
       if (defined(invoker.enable_errorprone)) {

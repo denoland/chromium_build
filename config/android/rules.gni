@@ -1805,9 +1805,6 @@ if (enable_java_templates) {
   # resources.
   #
   # Supports all variables of java_library(), plus:
-  #   android_manifest_for_lint: Path to AndroidManifest.xml (optional). This
-  #     manifest will be used by Android lint, but will not be merged into apks.
-  #     To have a manifest merged, add it to an android_resources() target.
   #   deps: In addition to defining java deps, this can also include
   #     android_assets() and android_resources() targets.
   #   dex_path: If set, the resulting .dex.jar file will be placed under this
