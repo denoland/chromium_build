@@ -578,7 +578,7 @@ template("test_runner_script") {
                                "deps",
                                "public_deps",
                              ])
-      data_deps = []
+      data_deps = [ "//tools/android/md5sum" ]
       if (defined(invoker.data_deps)) {
         data_deps += invoker.data_deps
       }
@@ -2691,7 +2691,6 @@ if (enable_java_templates) {
     _script = "//build/android/gyp/apkbuilder.py"
     _apksigner = "$android_sdk_build_tools/lib/apksigner.jar"
     _zipalign = "$android_sdk_build_tools/zipalign"
-    _data_deps = [ "//tools/android/md5sum" ]
 
     _inputs = [
       invoker.build_config,
@@ -2841,7 +2840,6 @@ if (enable_java_templates) {
       depfile = "$target_gen_dir/$target_name.d"
       inputs = _inputs
       deps = _deps
-      data_deps = _data_deps
       data = _data
       outputs = _outputs
       script = _script

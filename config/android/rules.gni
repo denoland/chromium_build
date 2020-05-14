@@ -3279,6 +3279,7 @@ if (enable_java_templates) {
         _generated_script = "$root_build_dir/bin/${invoker.target_name}"
         script = "//build/android/gyp/create_apk_operations_script.py"
         outputs = [ _generated_script ]
+        data_deps = [ "//tools/android/md5sum" ]
         args = [
           "--script-output-path",
           rebase_path(_generated_script, root_build_dir),
@@ -3314,7 +3315,7 @@ if (enable_java_templates) {
         }
         if (_proguard_enabled && !_incremental_apk) {
           # Required by logcat command.
-          data_deps = [ "//build/android/stacktrace:java_deobfuscate" ]
+          data_deps += [ "//build/android/stacktrace:java_deobfuscate" ]
           data = [ "$_final_apk_path.mapping" ]
           args += [
             "--proguard-mapping-path",
@@ -3758,7 +3759,6 @@ if (enable_java_templates) {
       data_deps += [
         "//build/android/pylib/device/commands",
         "//tools/android/forwarder2",
-        "//tools/android/md5sum",
       ]
       if (defined(invoker.apk_under_test)) {
         data_deps += [ invoker.apk_under_test ]
@@ -3920,10 +3920,7 @@ if (enable_java_templates) {
         "//base:base_java",
         "//testing/android/reporter:reporter_java",
       ]
-      data_deps += [
-        "//build/android/pylib/device/commands",
-        "//tools/android/md5sum",
-      ]
+      data_deps += [ "//build/android/pylib/device/commands" ]
       if (host_os == "linux") {
         data_deps += [ "//tools/android/forwarder2" ]
       }
@@ -4889,7 +4886,10 @@ if (enable_java_templates) {
         _keystore_path,
         _bundle_path,
       ]
-      data_deps = [ "//build/android:bundle_wrapper_script_py" ]
+      data_deps = [
+        "//build/android:bundle_wrapper_script_py",
+        "//tools/android/md5sum",
+      ]
 
       deps = [ _base_module_build_config_target ]
       args = [
