@@ -512,13 +512,10 @@ template("ios_info_plist") {
 #       entitlements (must generate a single file as output); cannot be
 #       defined if entitlements_path is set.
 #
-#   bundle_extension:
-#       (optional) bundle extension including the dot, default to ".app".
-#
 #   product_type
 #       (optional) string, product type for the generated Xcode project,
-#       default to "com.apple.product-type.application". Should generally
-#       not be overridden.
+#       default to "com.apple.product-type.application". Should only be
+#       overriden when building application extension.
 #
 #   enable_code_signing
 #       (optional) boolean, control whether code signing is enabled or not,
@@ -633,6 +630,25 @@ template("ios_app_bundle") {
                        "target_out_dir") + "/$_output_name.xcent"
   }
 
+  _app_product_type = "com.apple.product-type.application"
+  _appex_product_type = "com.apple.product-type.app-extension"
+  not_needed([ "_appex_product_type" ])
+
+  _product_type = _app_product_type
+  if (defined(invoker.product_type)) {
+    _product_type = invoker.product_type
+  }
+
+  if (_product_type == _app_product_type) {
+    _bundle_extension = ".app"
+  } else if (_product_type == _appex_product_type) {
+    _bundle_extension = ".appex"
+  } else {
+    assert(false, "unknown product_type \"$product_type\" for $_target_name")
+  }
+
+  _is_app_framework = _product_type == _app_product_type
+
   executable(_arch_executable_target) {
     forward_variables_from(invoker,
                            "*",
@@ -681,6 +697,18 @@ template("ios_app_bundle") {
       "-Xlinker",
       "2",
     ]
+
+    # Application extension may share private frameworks with the application
+    # itself, so they need to look in both their own bundle and the surrounding
+    # app bundle for the frameworks.
+    if (!_is_app_framework) {
+      ldflags += [
+        "-Xlinker",
+        "-rpath",
+        "-Xlinker",
+        "@executable_path/../../Frameworks",
+      ]
+    }
 
     if (use_ios_simulator) {
       deps += [ ":$_generate_entitlements_target($default_toolchain)" ]
@@ -792,24 +820,8 @@ template("ios_app_bundle") {
       }
     }
 
-    _app_product_type = "com.apple.product-type.application"
-    _product_type = _app_product_type
-    if (defined(invoker.product_type)) {
-      _product_type = invoker.product_type
-    }
-
-    _app_bundle_extension = ".app"
-    _bundle_extension = _app_bundle_extension
-    if (defined(invoker.bundle_extension)) {
-      _bundle_extension = invoker.bundle_extension
-    }
-
-    # Only write PkgInfo for real application, not application extension (they
-    # have the same product type but a different extension).
-    _write_pkg_info = _product_type == _app_product_type &&
-                      _bundle_extension == _app_bundle_extension
-
-    if (_write_pkg_info) {
+    # Only write PkgInfo for real application, not application extension.
+    if (_is_app_framework) {
       _create_pkg_info = target_name + "_pkg_info"
       action(_create_pkg_info) {
         forward_variables_from(invoker, [ "testonly" ])
@@ -875,7 +887,7 @@ template("ios_app_bundle") {
         if (!defined(bundle_deps)) {
           bundle_deps = []
         }
-        if (_write_pkg_info) {
+        if (_is_app_framework) {
           bundle_deps += [ ":$_bundle_data_pkg_info" ]
         }
         bundle_deps += _variant.bundle_deps
@@ -950,7 +962,6 @@ template("ios_appex_bundle") {
                              "bundle_extension",
                              "product_type",
                            ])
-    bundle_extension = ".appex"
     product_type = "com.apple.product-type.app-extension"
 
     # Add linker flags required for an application extension (determined by
