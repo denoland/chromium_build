@@ -4282,6 +4282,7 @@ if (enable_java_templates) {
     _java_library_vars = [
       "enable_bytecode_checks",
       "enable_bytecode_rewriter",
+      "missing_classes_allowlist",
       "enable_jetify",
       "jar_excluded_patterns",
       "jar_included_patterns",
