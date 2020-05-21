@@ -981,7 +981,10 @@ if (enable_java_templates) {
     # http://crbug.com/725224. Fix for bots running out of memory.
     _pool = "//build/toolchain:link_pool($default_toolchain)"
 
-    _inputs = [ invoker.build_config ]
+    _inputs = [
+      invoker.build_config,
+      _r8_path,
+    ]
     if (defined(invoker.inputs)) {
       _inputs += invoker.inputs
     }
@@ -1007,6 +1010,8 @@ if (enable_java_templates) {
       "@FileArg($_rebased_build_config:deps_info:proguard_classpath_jars)",
       "--classpath",
       "@FileArg($_rebased_build_config:android:sdk_jars)",
+      "--r8-path",
+      rebase_path(_r8_path, root_build_dir),
     ]
 
     if (enable_proguard_obfuscation) {
@@ -1074,26 +1079,12 @@ if (enable_java_templates) {
       ]
     }
 
-    if (!defined(invoker.proguard_jar_path)) {
+    if (enable_jdk_library_desugaring) {
       _args += [
-        "--r8-path",
-        rebase_path(_r8_path, root_build_dir),
+        "--desugar-jdk-libs-json",
+        rebase_path(_desugar_jdk_libs_json, root_build_dir),
       ]
-      _inputs += [ _r8_path ]
-      if (enable_jdk_library_desugaring) {
-        _args += [
-          "--desugar-jdk-libs-json",
-          rebase_path(_desugar_jdk_libs_json, root_build_dir),
-        ]
-        _inputs += [ _desugar_jdk_libs_json ]
-      }
-    } else {
-      _proguard_jar_path = invoker.proguard_jar_path
-      _args += [
-        "--proguard-path",
-        rebase_path(_proguard_jar_path, root_build_dir),
-      ]
-      _inputs += [ _proguard_jar_path ]
+      _inputs += [ _desugar_jdk_libs_json ]
     }
 
     _enable_assert = is_java_debug || dcheck_always_on
@@ -1222,8 +1213,6 @@ if (enable_java_templates) {
     _proguard_enabled =
         defined(invoker.proguard_enabled) && invoker.proguard_enabled
     _is_dex_merging = defined(invoker.input_dex_filearg)
-    _proguarding_with_r8 =
-        _proguard_enabled && !defined(invoker.proguard_jar_path)
     _enable_multidex =
         !defined(invoker.enable_multidex) || invoker.enable_multidex
     _enable_main_dex_list = _enable_multidex && _min_sdk_version < 21
@@ -1243,7 +1232,7 @@ if (enable_java_templates) {
     }
 
     assert(defined(invoker.output) ||
-           (_proguarding_with_r8 && defined(invoker.modules)))
+           (_proguard_enabled && defined(invoker.modules)))
     assert(!_proguard_enabled || !(defined(invoker.input_dex_filearg) ||
                                        defined(invoker.input_classes_filearg) ||
                                        defined(invoker.input_class_jars)),
@@ -1265,15 +1254,10 @@ if (enable_java_templates) {
     }
 
     if (_proguard_enabled) {
-      if (_proguarding_with_r8) {
-        if (defined(invoker.output)) {
-          _proguard_output_path = invoker.output
-        }
-        _proguard_target_name = target_name
-      } else {
-        _proguard_output_path = invoker.output + ".proguard.jar"
-        _proguard_target_name = "${target_name}__proguard"
+      if (defined(invoker.output)) {
+        _proguard_output_path = invoker.output
       }
+      _proguard_target_name = target_name
 
       proguard(_proguard_target_name) {
         forward_variables_from(invoker,
@@ -1284,7 +1268,6 @@ if (enable_java_templates) {
                                  "deps",
                                  "modules",
                                  "verify_proguard_flags_target_name",
-                                 "proguard_jar_path",
                                  "proguard_mapping_path",
                                  "proguard_sourcefile_suffix",
                                  "is_static_library",
@@ -1325,7 +1308,7 @@ if (enable_java_templates) {
           args += [ "--apply-mapping=$_rebased_apply_mapping_path" ]
         }
 
-        if (_proguarding_with_r8 && _enable_main_dex_list) {
+        if (_enable_main_dex_list) {
           if (defined(invoker.extra_main_dex_proguard_config)) {
             args += [
               "--main-dex-rules-path",
@@ -1343,30 +1326,18 @@ if (enable_java_templates) {
 
         if (defined(_proguard_output_path)) {
           output_path = _proguard_output_path
-          if (_proguarding_with_r8) {
-            config_output_path = "$_proguard_output_path.proguard_flags"
-          }
+          config_output_path = "$_proguard_output_path.proguard_flags"
         } else {
           mapping_path = "$target_out_dir/$target_name.mapping"
-          if (_proguarding_with_r8) {
-            config_output_path = "$target_out_dir/$target_name.proguard_flags"
-          }
+          config_output_path = "$target_out_dir/$target_name.proguard_flags"
         }
       }
-    }
-
-    if (!_proguarding_with_r8) {
+    } else {  # !_proguard_enabled
       _input_class_jars = []
       if (defined(invoker.input_class_jars)) {
         _input_class_jars = invoker.input_class_jars
       }
-      if (_proguard_enabled) {
-        _input_class_jars += [ _proguard_output_path ]
-      }
       _deps = invoker.deps
-      if (_proguard_enabled) {
-        _deps += [ ":${_proguard_target_name}" ]
-      }
 
       if (_is_dex_merging && enable_bazel_desugar) {
         # It would be more efficient to use the pre-dex'ed copy of the runtime,
@@ -1467,9 +1438,8 @@ if (enable_java_templates) {
           rebase_path(_r8_path, root_build_dir),
         ]
 
-        if (!_proguard_enabled && enable_incremental_d8 &&
-            !(defined(invoker.disable_incremental) &&
-              invoker.disable_incremental)) {
+        if (enable_incremental_d8 && !(defined(invoker.disable_incremental) &&
+                                       invoker.disable_incremental)) {
           # Don't use incremental dexing for ProGuarded inputs as a precaution.
           args += [
             "--incremental-dir",
@@ -1523,13 +1493,6 @@ if (enable_java_templates) {
             invoker.dexlayout_profile,
           ]
           inputs += _default_art_libs
-          if (_proguard_enabled) {
-            args += [
-              "--proguard-mapping-path",
-              rebase_path(invoker.proguard_mapping_path, root_build_dir),
-            ]
-            inputs += [ invoker.proguard_mapping_path ]
-          }
         }
 
         # Never compile intemediates with --release in order to:
