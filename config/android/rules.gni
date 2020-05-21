@@ -4313,6 +4313,7 @@ if (enable_java_templates) {
         jar_path = "$_output_path/${_tuple[1]}"
         _base_output_name = get_path_info(jar_path, "name")
         output_name = "${invoker.target_name}-$_base_output_name"
+        public_target_label = invoker.target_name
       }
     }
 
@@ -4347,6 +4348,7 @@ if (enable_java_templates) {
           }
           proguard_configs += [ "$_output_path/proguard.txt" ]
         }
+        public_target_label = invoker.target_name
       }
     }
 
