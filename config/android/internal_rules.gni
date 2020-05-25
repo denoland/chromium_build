@@ -3317,9 +3317,7 @@ if (enable_java_templates) {
         _final_jar_path = invoker.final_jar_path
       }
 
-      # TODO(wnwen): Enable turbine for non-chromium code when r8 optimizes out
-      #              bridge methods.
-      _enable_turbine = _has_sources && _chromium_code
+      _enable_turbine = _has_sources
       if (defined(invoker.enable_turbine)) {
         _enable_turbine = invoker.enable_turbine
       }
