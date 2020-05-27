@@ -286,6 +286,10 @@ Still reading?
     <ignore regexp="chrome/android/java/res/layout/sheet_tab_toolbar.xml"/>
   </issue>
   <issue id="RtlSymmetry" severity="ignore"/>
+  <issue id="SetTextI18n">
+    <!-- Tests can use setText without translating. -->
+    <ignore regexp="/javatests/"/>
+  </issue>
   <issue id="SetJavaScriptEnabled" severity="ignore"/>
   <issue id="SignatureOrSystemPermissions" severity="ignore"/>
   <issue id="SpUsage" severity="Error">
