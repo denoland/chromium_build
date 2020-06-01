@@ -3035,6 +3035,8 @@ if (enable_java_templates) {
               filter_exclude([ _target_label ], _java_lib_exceptions) != []) {
             # This is a java dep, so replace it.
             deps += [ "${_target_label}__header" ]
+          } else {
+            deps += [ _dep ]
           }
         }
       }
@@ -3052,6 +3054,8 @@ if (enable_java_templates) {
               filter_exclude([ _target_label ], _java_lib_exceptions) != []) {
             # This is a java dep, so replace it.
             deps += [ "${_target_label}__impl" ]
+          } else {
+            deps += [ _dep ]
           }
         }
       }
