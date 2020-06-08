@@ -935,18 +935,16 @@ if (enable_java_templates) {
         }
       }
 
-      _suppressions_file = "//build/android/lint/suppressions.xml"
       if (defined(invoker.lint_suppressions_file)) {
         _suppressions_file = invoker.lint_suppressions_file
-      } else if (defined(lint_suppressions_file)) {
-        # DEPRECATED: Please specify invoker.lint_suppressions_file for apk
-        #     and app_bundle targets directly. This override will be removed
-        #     when WebRTC migrates to using invoker.lint_suppressions_file.
-        _suppressions_file = lint_suppressions_file
-      }
 
-      if (defined(invoker.lint_suppressions_dep)) {
-        deps += [ invoker.lint_suppressions_dep ]
+        # The custom suppressions file might be a generated file needing a dep.
+        # e.g. generating it by appending to the default suppressions.xml file.
+        if (defined(invoker.lint_suppressions_dep)) {
+          deps += [ invoker.lint_suppressions_dep ]
+        }
+      } else {
+        _suppressions_file = "//build/android/lint/suppressions.xml"
       }
 
       _min_sdk_version = default_min_sdk_version
