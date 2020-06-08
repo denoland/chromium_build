@@ -2023,6 +2023,12 @@ config("no_optimize") {
     } else {
       cflags = [ "-Os" ] + common_optimize_on_cflags
     }
+
+    if (!is_component_build) {
+      # Required for library partitions. Without this all symbols just end up
+      # in the base partition.
+      ldflags = [ "-Wl,--gc-sections" ]
+    }
   } else if (is_fuchsia) {
     # On Fuchsia, we optimize for size here to reduce the size of debug build
     # packages so they can be run in a KVM. See crbug.com/910243 for details.
