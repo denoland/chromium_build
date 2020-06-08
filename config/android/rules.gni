@@ -3363,6 +3363,8 @@ if (enable_java_templates) {
       android_lint(_android_lint_target) {
         forward_variables_from(invoker,
                                [
+                                 "lint_suppressions_dep",
+                                 "lint_suppressions_file",
                                  "manifest_package",
                                  "min_sdk_version",
                                ])
@@ -3371,7 +3373,12 @@ if (enable_java_templates) {
         deps = [ ":$_java_target" ]
       }
     } else {
-      not_needed(invoker, [ "manifest_package" ])
+      not_needed(invoker,
+                 [
+                   "manifest_package",
+                   "lint_suppressions_dep",
+                   "lint_suppressions_file",
+                 ])
     }
 
     group(target_name) {
@@ -3473,6 +3480,8 @@ if (enable_java_templates) {
                                "keystore_name",
                                "keystore_password",
                                "keystore_path",
+                               "lint_suppressions_dep",
+                               "lint_suppressions_file",
                                "load_library_from_apk",
                                "loadable_modules",
                                "manifest_package",
@@ -4964,16 +4973,22 @@ if (enable_java_templates) {
       android_lint(_android_lint_target) {
         forward_variables_from(invoker,
                                [
+                                 "lint_suppressions_dep",
+                                 "lint_suppressions_file",
                                  "manifest_package",
                                  "min_sdk_version",
-                                 "lint_suppressions_file",
                                ])
         build_config = _build_config
         build_config_dep = ":$_build_config_target"
         deps = _module_java_targets
       }
     } else {
-      not_needed(invoker, [ "manifest_package" ])
+      not_needed(invoker,
+                 [
+                   "manifest_package",
+                   "lint_suppressions_dep",
+                   "lint_suppressions_file",
+                 ])
     }
 
     group(_target_name) {

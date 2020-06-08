@@ -939,9 +939,14 @@ if (enable_java_templates) {
       if (defined(invoker.lint_suppressions_file)) {
         _suppressions_file = invoker.lint_suppressions_file
       } else if (defined(lint_suppressions_file)) {
-        # WebRTC defines its own lint_suppressions_file:
-        # //tools_webrtc/android/suppressions.xml
+        # DEPRECATED: Please specify invoker.lint_suppressions_file for apk
+        #     and app_bundle targets directly. This override will be removed
+        #     when WebRTC migrates to using invoker.lint_suppressions_file.
         _suppressions_file = lint_suppressions_file
+      }
+
+      if (defined(invoker.lint_suppressions_dep)) {
+        deps += [ invoker.lint_suppressions_dep ]
       }
 
       _min_sdk_version = default_min_sdk_version
