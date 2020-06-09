@@ -2279,7 +2279,8 @@ config("symbols") {
       cflags += [ "-g2" ]
     }
 
-    if (is_clang && !is_nacl && !use_xcode_clang) {
+    # TODO(https://crbug.com/1050118): Investigate missing debug info on mac.
+    if (is_clang && !is_nacl && !use_xcode_clang && !is_mac && !is_ios) {
       cflags += [
         "-Xclang",
         "-debug-info-kind=constructor",
