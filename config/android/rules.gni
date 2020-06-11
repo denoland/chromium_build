@@ -4067,6 +4067,8 @@ if (enable_java_templates) {
     _template_name = target_name
 
     action_with_pydeps("${_template_name}__protoc_java") {
+      # The suffix "__protoc_java.srcjar" is used by SuperSize to identify
+      # protobuf symbols.
       _srcjar_path = "$target_gen_dir/$target_name.srcjar"
       script = "//build/protoc_java.py"
 
