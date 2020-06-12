@@ -701,8 +701,8 @@ class Deps(object):
     def helper(cur):
       for config in cur.Direct('java_library'):
         if config['is_prebuilt'] or config['gradle_treat_as_prebuilt']:
-          if config['jar_path'] not in ret:
-            ret.append(config['jar_path'])
+          if config['unprocessed_jar_path'] not in ret:
+            ret.append(config['unprocessed_jar_path'])
 
     helper(self)
     return ret
@@ -1616,7 +1616,7 @@ def main(argv):
                                                  'junit_binary'):
     deps_info['jni']['all_source'] = sorted(set(all_java_sources))
 
-  system_jars = [c['jar_path'] for c in system_library_deps]
+  system_jars = [c['unprocessed_jar_path'] for c in system_library_deps]
   system_interface_jars = [c['interface_jar_path'] for c in system_library_deps]
   if system_library_deps:
     config['android'] = {}
