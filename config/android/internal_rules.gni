@@ -1342,6 +1342,8 @@ if (enable_java_templates) {
         forward_variables_from(invoker,
                                [
                                  "build_config",
+                                 "data",
+                                 "data_deps",
                                  "deps",
                                  "disable_checkdiscard",
                                  "disable_r8_outlining",
@@ -1352,6 +1354,7 @@ if (enable_java_templates) {
                                  "supports_jdk_library_desugaring",
                                  "testonly",
                                  "verify_proguard_flags_target_name",
+                                 "visibiity",
                                ])
         inputs = []
         if (defined(invoker.inputs)) {
@@ -1501,7 +1504,13 @@ if (enable_java_templates) {
       }
 
       action_with_pydeps(target_name) {
-        forward_variables_from(invoker, [ "testonly" ])
+        forward_variables_from(invoker,
+                               [
+                                 "data",
+                                 "data_deps",
+                                 "testonly",
+                                 "visibility",
+                               ])
         script = "//build/android/gyp/dex.py"
         deps = _deps
         depfile = "$target_gen_dir/$target_name.d"
@@ -3212,8 +3221,6 @@ if (enable_java_templates) {
   #    final_jar_path is provided. Otherwise, used to determine the name
   #    of the final jar. If not provided, the default is to use the same
   #    name as jar_path, if provided, or main_target_name.
-  #  dex_path: Optional. Path to the output dex.jar file for this target.
-  #    Ignored if !supports_android.
   #  main_class: Main Java class name for 'java_binary', 'junit_binary' and
   #    'java_annotation_processor' target types. Should not be set for other
   #    ones.
@@ -3414,9 +3421,6 @@ if (enable_java_templates) {
 
       if (_supports_android) {
         _dex_path = "$target_out_dir/$_main_target_name.dex.jar"
-        if (defined(invoker.dex_path)) {
-          _dex_path = invoker.dex_path
-        }
       }
     }
 
