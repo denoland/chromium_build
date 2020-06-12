@@ -69,7 +69,6 @@ _java_library_patterns = [
   "*:*_bundle_module",
 
   # TODO(agrieve): Rename targets below to match above patterns.
-  "//android_webview/glue/glue:glue",
   "//android_webview/glue:glue",
 ]
 
