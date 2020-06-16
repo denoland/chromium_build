@@ -425,6 +425,9 @@ Still reading?
     <ignore regexp="The resource `R.mipmap.app_single_page_icon` appears to be unused"/>
     <!-- 1: Some strings in components_strings_grd are not used in other targets. -->
     <ignore regexp="webview_.*__lint.*components_strings_grd"/>
+    <!-- TODO(crbug.com/1025620): Remove the following two in the followup CL that uses these resources in WebLayer. -->
+    <ignore regexp="The resource `R.drawable.infobar_shadow_left` appears to be unused"/>
+    <ignore regexp="The resource `R.drawable.infobar_shadow_top` appears to be unused"/>
     <!-- Endnote: Please specify number of suppressions when adding more -->
   </issue>
   <issue id="UsableSpace">
