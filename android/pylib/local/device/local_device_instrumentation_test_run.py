@@ -1011,6 +1011,25 @@ class LocalDeviceInstrumentationTestRun(
               'when doing Skia Gold comparison.' % image_name)
           continue
 
+        # Add 'ignore': '1' if a comparison failure would not be surfaced, as
+        # that implies that we aren't actively maintaining baselines for the
+        # test. This helps prevent unrelated CLs from getting comments posted to
+        # them.
+        with open(json_path) as infile:
+          # All the key/value pairs in the JSON file are strings, so convert
+          # to a bool.
+          json_dict = json.load(infile)
+          fail_on_unsupported = json_dict.get('fail_on_unsupported_configs',
+                                              'false')
+          fail_on_unsupported = fail_on_unsupported.lower() == 'true'
+        should_hide_failure = (
+            device.build_version_sdk not in RENDER_TEST_MODEL_SDK_CONFIGS.get(
+                device.product_model, []) and not fail_on_unsupported)
+        if should_hide_failure:
+          json_dict['ignore'] = '1'
+          with open(json_path, 'w') as outfile:
+            json.dump(json_dict, outfile)
+
         gold_session = self._skia_gold_session_manager.GetSkiaGoldSession(
             keys_file=json_path)
 
@@ -1031,14 +1050,7 @@ class LocalDeviceInstrumentationTestRun(
         # Don't fail the test if we ran on an unsupported configuration unless
         # the test has explicitly opted in, as it's likely that baselines
         # aren't maintained for that configuration.
-        with open(json_path) as infile:
-          # All the key/value pairs in the JSON file are strings, so convert
-          # to a bool.
-          fail_on_unsupported = json.load(infile).get(
-              'fail_on_unsupported_configs', 'false')
-          fail_on_unsupported = fail_on_unsupported.lower() == 'true'
-        if device.build_version_sdk not in RENDER_TEST_MODEL_SDK_CONFIGS.get(
-            device.product_model, []) and not fail_on_unsupported:
+        if should_hide_failure:
           if self._test_instance.skia_gold_properties.local_pixel_tests:
             _AppendToLog(
                 results, 'Gold comparison for %s failed, but model %s with SDK '
