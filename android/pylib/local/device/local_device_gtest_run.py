@@ -40,7 +40,6 @@ _EXTRA_COMMAND_LINE_FLAGS = (
     'org.chromium.native_test.NativeTest.CommandLineFlags')
 _EXTRA_COVERAGE_DEVICE_FILE = (
     'org.chromium.native_test.NativeTest.CoverageDeviceFile')
-_EXTRA_ROOT_DIRECTORY = 'org.chromium.base.test.util.UrlUtils.RootDirectory'
 _EXTRA_STDOUT_FILE = (
     'org.chromium.native_test.NativeTestInstrumentationTestRunner'
         '.StdoutFile')
@@ -137,7 +136,7 @@ def _GetDeviceCoverageDir(device):
   Returns:
     The directory path on the device.
   """
-  return posixpath.join(device.GetAppWritablePath(), 'chrome', 'test',
+  return posixpath.join(device.GetExternalStoragePath(), 'chrome', 'test',
                         'coverage', 'profraw')
 
 
@@ -180,7 +179,8 @@ class _ApkDelegate(object):
 
   def GetTestDataRoot(self, device):
     # pylint: disable=no-self-use
-    return posixpath.join(device.GetAppWritablePath(), 'chromium_tests_root')
+    return posixpath.join(device.GetExternalStoragePath(),
+                          'chromium_tests_root')
 
   def Install(self, device):
     if self._test_apk_incremental_install_json:
@@ -199,8 +199,6 @@ class _ApkDelegate(object):
   def Run(self, test, device, flags=None, **kwargs):
     extras = dict(self._extras)
     device_api = device.build_version_sdk
-
-    extras[_EXTRA_ROOT_DIRECTORY] = device.GetAppWritablePath()
 
     if self._coverage_dir and device_api >= version_codes.LOLLIPOP:
       device_coverage_dir = _GetDeviceCoverageDir(device)
@@ -238,7 +236,7 @@ class _ApkDelegate(object):
     # pylint: enable=redefined-variable-type
 
     stdout_file = device_temp_file.DeviceTempFile(
-        device.adb, dir=device.GetAppWritablePath(), suffix='.gtest_out')
+        device.adb, dir=device.GetExternalStoragePath(), suffix='.gtest_out')
     extras[_EXTRA_STDOUT_FILE] = stdout_file.name
 
     if self._wait_for_java_debugger:
@@ -346,7 +344,8 @@ class _ExeDelegate(object):
 
     try:
       gcov_strip_depth = os.environ['NATIVE_COVERAGE_DEPTH_STRIP']
-      env['GCOV_PREFIX'] = '%s/gcov' % device.GetAppWritablePath()
+      external = device.GetExternalStoragePath()
+      env['GCOV_PREFIX'] = '%s/gcov' % external
       env['GCOV_PREFIX_STRIP'] = gcov_strip_depth
     except (device_errors.CommandFailedError, KeyError):
       pass
