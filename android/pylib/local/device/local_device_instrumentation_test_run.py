@@ -388,7 +388,7 @@ class LocalDeviceInstrumentationTestRun(
     # expectations can be re-used between tests, saving a significant amount
     # of time.
     self._skia_gold_work_dir = tempfile.mkdtemp()
-    self._skia_gold_session_manager = gold_utils.SkiaGoldSessionManager(
+    self._skia_gold_session_manager = gold_utils.AndroidSkiaGoldSessionManager(
         self._skia_gold_work_dir, self._test_instance.skia_gold_properties)
     if self._test_instance.wait_for_java_debugger:
       logging.warning('*' * 80)
@@ -1031,7 +1031,7 @@ class LocalDeviceInstrumentationTestRun(
             json.dump(json_dict, outfile)
 
         gold_session = self._skia_gold_session_manager.GetSkiaGoldSession(
-            keys_file=json_path)
+            keys_input=json_path)
 
         try:
           status, error = gold_session.RunComparison(
@@ -1069,7 +1069,7 @@ class LocalDeviceInstrumentationTestRun(
         failure_log = (
             'Skia Gold reported failure for RenderTest %s. See '
             'RENDER_TESTS.md for how to fix this failure.' % render_name)
-        status_codes = gold_utils.SkiaGoldSession.StatusCodes
+        status_codes = gold_utils.AndroidSkiaGoldSession.StatusCodes
         if status == status_codes.AUTH_FAILURE:
           _AppendToLog(results,
                        'Gold authentication failed with output %s' % error)
