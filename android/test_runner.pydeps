@@ -48,6 +48,7 @@
 ../../third_party/catapult/devil/devil/android/crash_handler.py
 ../../third_party/catapult/devil/devil/android/decorators.py
 ../../third_party/catapult/devil/devil/android/device_blacklist.py
+../../third_party/catapult/devil/devil/android/device_denylist.py
 ../../third_party/catapult/devil/devil/android/device_errors.py
 ../../third_party/catapult/devil/devil/android/device_list.py
 ../../third_party/catapult/devil/devil/android/device_signal.py
