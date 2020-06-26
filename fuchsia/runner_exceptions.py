@@ -7,6 +7,10 @@
 This makes it easier to query build tables for particular error types as
 exit codes are visible to queries while exception stack traces are not."""
 
+import errno
+import fcntl
+import logging
+import os
 import subprocess
 import sys
 import traceback
@@ -18,6 +22,17 @@ def _PrintException(value, trace):
 
   traceback.print_tb(trace)
   print(str(value))
+
+
+def IsStdoutBlocking():
+  """Returns True if sys.stdout is blocking or False if non-blocking.
+
+  sys.stdout should always be blocking.  Non-blocking is associated with
+  intermittent IOErrors (crbug.com/1080858).
+  """
+
+  nonblocking = fcntl.fcntl(sys.stdout, fcntl.F_GETFL) & os.O_NONBLOCK
+  return not nonblocking
 
 
 def HandleExceptionAndReturnExitCode():
@@ -37,25 +52,27 @@ def HandleExceptionAndReturnExitCode():
   Returns the mapped return code."""
 
   (type, value, trace) = sys.exc_info()
+  _PrintException(value, trace)
+
   if type is FuchsiaTargetException:
     if 'ssh' in str(value).lower():
-        print("Error: FuchsiaTargetException: SSH to Fuchsia target failed.")
-        return 65
-    _PrintException(value, trace)
+      print('Error: FuchsiaTargetException: SSH to Fuchsia target failed.')
+      return 65
     return 64
   elif type is IOError:
-    if value.errno == 11:
-        print("Error: IOError: [Errno 11] Resource temporarily unavailable.")
-        print("Info: Python print to stdout probably failed")
-        return 73
-    _PrintException(value, trace)
+    if value.errno == errno.EAGAIN:
+      logging.info('Python print to sys.stdout probably failed')
+      if not IsStdoutBlocking():
+        logging.warn('sys.stdout is non-blocking')
+      return 73
     return 72
   elif type is subprocess.CalledProcessError:
-    if value.cmd[0] == 'scp':
-      print("Error: scp operation failed - %s" % str(value))
+    if os.path.basename(value.cmd[0]) == 'scp':
+      print('Error: scp operation failed - %s' % str(value))
       return 81
-    _PrintException(value, trace)
+    if os.path.basename(value.cmd[0]) == 'qemu-img':
+      print('Error: qemu-img fuchsia image generation failed.')
+      return 82
     return 80
   else:
-    _PrintException(value, trace)
     return 1

@@ -18,7 +18,6 @@ import contextlib
 import filecmp
 import hashlib
 import logging
-import multiprocessing.dummy
 import os
 import re
 import shutil
@@ -26,7 +25,6 @@ import subprocess
 import sys
 import tempfile
 import textwrap
-import time
 import zipfile
 from xml.etree import ElementTree
 
@@ -34,29 +32,10 @@ from util import build_utils
 from util import diff_utils
 from util import manifest_utils
 from util import md5_check
+from util import parallel
+from util import protoresources
 from util import resource_utils
 
-# `Resources_pb2` module imports `descriptor`, which imports `six`.
-sys.path.insert(
-    1,
-    os.path.join(
-        os.path.dirname(__file__), os.pardir, os.pardir, os.pardir,
-        'third_party', 'six', 'src'))
-
-# Import jinja2 from third_party/jinja2
-sys.path.insert(1, os.path.join(build_utils.DIR_SOURCE_ROOT, 'third_party'))
-from jinja2 import Template # pylint: disable=F0401
-
-# Make sure the pb2 files are able to import google.protobuf
-sys.path.insert(
-    1,
-    os.path.join(build_utils.DIR_SOURCE_ROOT, 'third_party', 'protobuf',
-                 'python'))
-from proto import Resources_pb2
-
-_JETIFY_SCRIPT_PATH = os.path.join(build_utils.DIR_SOURCE_ROOT, 'third_party',
-                                   'jetifier_standalone', 'bin',
-                                   'jetifier-standalone')
 
 # Pngs that we shouldn't convert to webp. Please add rationale when updating.
 _PNG_WEBP_EXCLUSION_PATTERN = re.compile('|'.join([
@@ -67,11 +46,6 @@ _PNG_WEBP_EXCLUSION_PATTERN = re.compile('|'.join([
     # Daydream requires pngs for icon files.
     r'.*daydream_icon_.*\.png'
 ]))
-
-# The package ID hardcoded for shared libraries. See
-# _HardcodeSharedLibraryDynamicAttributes() for more details. If this value
-# changes make sure to change REQUIRED_PACKAGE_IDENTIFIER in WebLayerImpl.java.
-_SHARED_LIBRARY_HARDCODED_ID = 12
 
 
 def _ParseArgs(args):
@@ -202,17 +176,19 @@ def _ParseArgs(args):
       help='GN list of languages to include. All other language configs will '
       'be stripped out. List may include a combination of Android locales '
       'or Chrome locales.')
-
   input_opts.add_argument(
       '--resource-exclusion-regex',
       default='',
-      help='Do not include matching drawables.')
-
+      help='File-based filter for resources (applied before compiling)')
   input_opts.add_argument(
       '--resource-exclusion-exceptions',
       default='[]',
-      help='GN list of globs that say which excluded images to include even '
+      help='GN list of globs that say which files to include even '
       'when --resource-exclusion-regex is set.')
+  input_opts.add_argument(
+      '--values-filter-rules',
+      help='GN list of source_glob:regex for filtering resources after they '
+      'are compiled. Use this to filter out entries within values/ files.')
 
   input_opts.add_argument('--png-to-webp', action='store_true',
                           help='Convert png files to webp format.')
@@ -288,6 +264,8 @@ def _ParseArgs(args):
       options.shared_resources_allowlist_locales)
   options.resource_exclusion_exceptions = build_utils.ParseGnList(
       options.resource_exclusion_exceptions)
+  options.values_filter_rules = build_utils.ParseGnList(
+      options.values_filter_rules)
   options.extra_main_r_text_files = build_utils.ParseGnList(
       options.extra_main_r_text_files)
 
@@ -568,95 +546,64 @@ def _CreateKeepPredicate(resource_exclusion_regex,
       build_utils.MatchesGlob(path, resource_exclusion_exceptions))
 
 
-def _ConvertToWebP(webp_binary, png_files, path_info, webp_cache_dir):
-  pool = multiprocessing.dummy.Pool(10)
+def _ComputeSha1(path):
+  with open(path, 'rb') as f:
+    data = f.read()
+  return hashlib.sha1(data).hexdigest()
+
+
+def _ConvertToWebPSingle(png_path, cwebp_binary, cwebp_version, webp_cache_dir):
+  sha1_hash = _ComputeSha1(png_path)
+
+  # The set of arguments that will appear in the cache key.
+  quality_args = ['-m', '6', '-q', '100', '-lossless']
+
+  webp_cache_path = os.path.join(
+      webp_cache_dir, '{}-{}-{}'.format(sha1_hash, cwebp_version,
+                                        ''.join(quality_args)))
+  # No need to add .webp. Android can load images fine without them.
+  webp_path = os.path.splitext(png_path)[0]
+
+  cache_hit = os.path.exists(webp_cache_path)
+  if cache_hit:
+    os.link(webp_cache_path, webp_path)
+  else:
+    # We place the generated webp image to webp_path, instead of in the
+    # webp_cache_dir to avoid concurrency issues.
+    args = [cwebp_binary, png_path, '-o', webp_path, '-quiet'] + quality_args
+    subprocess.check_call(args)
+
+    try:
+      os.link(webp_path, webp_cache_path)
+    except OSError:
+      # Because of concurrent run, a webp image may already exists in
+      # webp_cache_path.
+      pass
+
+  os.remove(png_path)
+  original_dir = os.path.dirname(os.path.dirname(png_path))
+  rename_tuple = (os.path.relpath(png_path, original_dir),
+                  os.path.relpath(webp_path, original_dir))
+  return rename_tuple, cache_hit
+
+
+def _ConvertToWebP(cwebp_binary, png_paths, path_info, webp_cache_dir):
+  cwebp_version = subprocess.check_output([cwebp_binary, '-version']).rstrip()
+  shard_args = [(f, ) for f in png_paths
+                if not _PNG_WEBP_EXCLUSION_PATTERN.match(f)]
 
   build_utils.MakeDirectory(webp_cache_dir)
+  results = parallel.BulkForkAndCall(_ConvertToWebPSingle,
+                                     shard_args,
+                                     cwebp_binary=cwebp_binary,
+                                     cwebp_version=cwebp_version,
+                                     webp_cache_dir=webp_cache_dir)
+  total_cache_hits = 0
+  for rename_tuple, cache_hit in results:
+    path_info.RegisterRename(*rename_tuple)
+    total_cache_hits += int(cache_hit)
 
-  cwebp_version = subprocess.check_output([webp_binary, '-version']).rstrip()
-  cwebp_arguments = ['-mt', '-quiet', '-m', '6', '-q', '100', '-lossless']
-
-  sha1_time = [0]
-  cwebp_time = [0]
-  cache_hits = [0]
-
-  def cal_sha1(png_path):
-    start = time.time()
-    with open(png_path, 'rb') as f:
-      png_content = f.read()
-
-    sha1_hex = hashlib.sha1(png_content).hexdigest()
-    sha1_time[0] += time.time() - start
-    return sha1_hex
-
-  def get_converted_image(png_path_dir_tuple):
-    png_path, original_dir = png_path_dir_tuple
-    sha1_hash = cal_sha1(png_path)
-
-    webp_cache_path = os.path.join(
-        webp_cache_dir, '{}-{}-{}'.format(sha1_hash, cwebp_version,
-                                          ''.join(cwebp_arguments)))
-    # No need to add an extension, android can load images fine without them.
-    webp_path = os.path.splitext(png_path)[0]
-
-    if os.path.exists(webp_cache_path):
-      cache_hits[0] += 1
-      os.link(webp_cache_path, webp_path)
-    else:
-      # We place the generated webp image to webp_path, instead of in the
-      # webp_cache_dir to avoid concurrency issues.
-      start = time.time()
-      args = [webp_binary, png_path] + cwebp_arguments + ['-o', webp_path]
-      subprocess.check_call(args)
-      cwebp_time[0] += time.time() - start
-
-      try:
-        os.link(webp_path, webp_cache_path)
-      except OSError:
-        # Because of concurrent run, a webp image may already exists in
-        # webp_cache_path.
-        pass
-
-    os.remove(png_path)
-    path_info.RegisterRename(
-        os.path.relpath(png_path, original_dir),
-        os.path.relpath(webp_path, original_dir))
-
-  png_files = [
-      f for f in png_files if not _PNG_WEBP_EXCLUSION_PATTERN.match(f[0])
-  ]
-  try:
-    pool.map(get_converted_image, png_files)
-  finally:
-    pool.close()
-    pool.join()
-  logging.debug('png->webp: cache: %d/%d sha1 time: %.1fms cwebp time: %.1fms',
-                cache_hits[0], len(png_files), sha1_time[0], cwebp_time[0])
-
-
-def _JetifyArchive(dep_path, output_path):
-  """Runs jetify script on a directory.
-
-  This converts resources to reference androidx over android support libraries.
-  Directories will be put in a zip file, jetified, then unzipped as jetify
-  only runs on archives.
-  """
-  # Jetify script only works on archives.
-  with tempfile.NamedTemporaryFile() as temp_archive:
-    build_utils.ZipDir(temp_archive.name, dep_path)
-
-    # Use -l error to avoid warnings when nothing is jetified.
-    jetify_cmd = [
-        _JETIFY_SCRIPT_PATH, '-i', temp_archive.name, '-o', temp_archive.name,
-        '-l', 'error'
-    ]
-    env = os.environ.copy()
-    env['JAVA_HOME'] = build_utils.JAVA_HOME
-    subprocess.check_call(jetify_cmd, env=env)
-    with zipfile.ZipFile(temp_archive.name) as zf:
-      zf.extractall(output_path)
-
-  return output_path
+  logging.debug('png->webp cache: %d/%d', total_cache_hits, len(shard_args))
 
 
 def _RemoveImageExtensions(directory, path_info):
@@ -676,202 +623,65 @@ def _RemoveImageExtensions(directory, path_info):
             os.path.relpath(path_no_extension, directory))
 
 
-def _CompileDeps(aapt2_path, dep_subdirs, temp_dir):
-  partials_dir = os.path.join(temp_dir, 'partials')
-  build_utils.MakeDirectory(partials_dir)
-  partial_compile_command = [
+def _CompileSingleDep(index, dep_subdir, keep_predicate, aapt2_path,
+                      partials_dir):
+  unique_name = '{}_{}'.format(index, os.path.basename(dep_subdir))
+  partial_path = os.path.join(partials_dir, '{}.zip'.format(unique_name))
+
+  compile_command = [
       aapt2_path,
       'compile',
       # TODO(wnwen): Turn this on once aapt2 forces 9-patch to be crunched.
       # '--no-crunch',
+      '--dir',
+      dep_subdir,
+      '-o',
+      partial_path
   ]
-  pool = multiprocessing.dummy.Pool(10)
 
-  def compile_partial(params):
-    index, dep_path = params
-    basename = os.path.basename(dep_path)
-    unique_name = '{}_{}'.format(index, basename)
-    partial_path = os.path.join(partials_dir, '{}.zip'.format(unique_name))
+  # There are resources targeting API-versions lower than our minapi. For
+  # various reasons it's easier to let aapt2 ignore these than for us to
+  # remove them from our build (e.g. it's from a 3rd party library).
+  build_utils.CheckOutput(
+      compile_command,
+      stderr_filter=lambda output: build_utils.FilterLines(
+          output, r'ignoring configuration .* for (styleable|attribute)'))
 
-    new_path = os.path.join(temp_dir, 'jetify', '{}.zip'.format(unique_name))
-    dep_path = _JetifyArchive(dep_path, new_path)
-
-    compile_command = (
-        partial_compile_command + ['--dir', dep_path, '-o', partial_path])
-
-    # There are resources targeting API-versions lower than our minapi. For
-    # various reasons it's easier to let aapt2 ignore these than for us to
-    # remove them from our build (e.g. it's from a 3rd party library).
-    build_utils.CheckOutput(
-        compile_command,
-        stderr_filter=lambda output:
-            build_utils.FilterLines(
-                output, r'ignoring configuration .* for (styleable|attribute)'))
-    return partial_path
-
-  try:
-    return pool.map(compile_partial, enumerate(dep_subdirs))
-  finally:
-    pool.close()
-    pool.join()
+  # Filtering these files is expensive, so only apply filters to the partials
+  # that have been explicitly targeted.
+  if keep_predicate:
+    logging.debug('Applying .arsc filtering to %s', dep_subdir)
+    protoresources.StripUnwantedResources(partial_path, keep_predicate)
+  return partial_path
 
 
-def _ProcessProtoItem(item):
-  if not item.HasField('ref'):
-    return
-
-  # If this is a dynamic attribute (type ATTRIBUTE, package ID 0), hardcode
-  # the package to _SHARED_LIBRARY_HARDCODED_ID.
-  if item.ref.type == Resources_pb2.Reference.ATTRIBUTE and not (
-      item.ref.id & 0xff000000):
-    item.ref.id |= (0x01000000 * _SHARED_LIBRARY_HARDCODED_ID)
-    item.ref.ClearField('is_dynamic')
-
-
-def _ProcessProtoValue(value):
-  if value.HasField('item'):
-    _ProcessProtoItem(value.item)
-  else:
-    compound_value = value.compound_value
-    if compound_value.HasField('style'):
-      for entry in compound_value.style.entry:
-        _ProcessProtoItem(entry.item)
-    elif compound_value.HasField('array'):
-      for element in compound_value.array.element:
-        _ProcessProtoItem(element.item)
-    elif compound_value.HasField('plural'):
-      for entry in compound_value.plural.entry:
-        _ProcessProtoItem(entry.item)
-
-
-def _ProcessProtoXmlNode(xml_node):
-  if not xml_node.HasField('element'):
-    return
-
-  for attribute in xml_node.element.attribute:
-    _ProcessProtoItem(attribute.compiled_item)
-
-  for child in xml_node.element.child:
-    _ProcessProtoXmlNode(child)
-
-
-def _SplitLocaleResourceType(_type, allowed_resource_names):
-  """Splits locale specific resources out of |_type| and returns them.
-
-  Any locale specific resources will be removed from |_type|, and a new
-  Resources_pb2.Type value will be returned which contains those resources.
-
-  Args:
-    _type: A Resources_pb2.Type value
-    allowed_resource_names: Names of locale resources that should be kept in the
-        main type.
-  """
-  locale_entries = []
-  for entry in _type.entry:
-    if entry.name in allowed_resource_names:
-      continue
-
-    # First collect all resources values with a locale set.
-    config_values_with_locale = []
-    for config_value in entry.config_value:
-      if config_value.config.locale:
-        config_values_with_locale.append(config_value)
-
-    if config_values_with_locale:
-      # Remove the locale resources from the original entry
-      for value in config_values_with_locale:
-        entry.config_value.remove(value)
-
-      # Add locale resources to a new Entry, and save for later.
-      locale_entry = Resources_pb2.Entry()
-      locale_entry.CopyFrom(entry)
-      del locale_entry.config_value[:]
-      locale_entry.config_value.extend(config_values_with_locale)
-      locale_entries.append(locale_entry)
-
-  if not locale_entries:
+def _CreateValuesKeepPredicate(exclusion_rules, dep_subdir):
+  patterns = [
+      x[1] for x in exclusion_rules
+      if build_utils.MatchesGlob(dep_subdir, [x[0]])
+  ]
+  if not patterns:
     return None
 
-  # Copy the original type and replace the entries with |locale_entries|.
-  locale_type = Resources_pb2.Type()
-  locale_type.CopyFrom(_type)
-  del locale_type.entry[:]
-  locale_type.entry.extend(locale_entries)
-  return locale_type
+  regexes = [re.compile(p) for p in patterns]
+  return lambda x: not any(r.search(x) for r in regexes)
 
 
-def _HardcodeSharedLibraryDynamicAttributes(zip_path, options):
-  """Hardcodes the package IDs of dynamic attributes and locale resources.
+def _CompileDeps(aapt2_path, dep_subdirs, temp_dir, exclusion_rules):
+  partials_dir = os.path.join(temp_dir, 'partials')
+  build_utils.MakeDirectory(partials_dir)
 
-  Hardcoding dynamic attribute package IDs is a workaround for b/147674078,
-  which affects Android versions pre-N. Hardcoding locale resource package IDs
-  is a workaround for b/155437035, which affects resources built with
-  --shared-lib on all Android versions
+  job_params = [(i, dep_subdir,
+                 _CreateValuesKeepPredicate(exclusion_rules, dep_subdir))
+                for i, dep_subdir in enumerate(dep_subdirs)]
 
-  Args:
-    zip_path: Path to proto APK file.
-  """
-  with build_utils.TempDir() as tmp_dir:
-    build_utils.ExtractAll(zip_path, path=tmp_dir)
-
-    # First process the resources file.
-    table = Resources_pb2.ResourceTable()
-    with open(os.path.join(tmp_dir, 'resources.pb')) as f:
-      table.ParseFromString(f.read())
-
-    translations_package = None
-    if options.is_bundle_module:
-      # A separate top level package will be added to the resources, which
-      # contains only locale specific resources. The package ID of the locale
-      # resources is hardcoded to _SHARED_LIBRARY_HARDCODED_ID. This causes
-      # resources in locale splits to all get assigned
-      # _SHARED_LIBRARY_HARDCODED_ID as their package ID, which prevents a bug
-      # in shared library bundles where each split APK gets a separate dynamic
-      # ID, and cannot be accessed by the main APK.
-      translations_package = Resources_pb2.Package()
-      translations_package.package_id.id = _SHARED_LIBRARY_HARDCODED_ID
-      translations_package.package_name = table.package[
-          0].package_name + '_translations'
-
-      # These resources are allowed in the base resources, since they are needed
-      # by WebView.
-      allowed_resource_names = set()
-      if options.shared_resources_allowlist:
-        allowed_resource_names = set(
-            resource_utils.GetRTxtStringResourceNames(
-                options.shared_resources_allowlist))
-
-    for package in table.package:
-      for _type in package.type:
-        for entry in _type.entry:
-          for config_value in entry.config_value:
-            _ProcessProtoValue(config_value.value)
-
-        if translations_package is not None:
-          locale_type = _SplitLocaleResourceType(_type, allowed_resource_names)
-          if locale_type:
-            translations_package.type.add().CopyFrom(locale_type)
-
-    if translations_package is not None:
-      table.package.add().CopyFrom(translations_package)
-
-    with open(os.path.join(tmp_dir, 'resources.pb'), 'w') as f:
-      f.write(table.SerializeToString())
-
-    # Next process all the XML files.
-    xml_files = build_utils.FindInDirectory(tmp_dir, '*.xml')
-    for xml_file in xml_files:
-      xml_node = Resources_pb2.XmlNode()
-      with open(xml_file) as f:
-        xml_node.ParseFromString(f.read())
-
-      _ProcessProtoXmlNode(xml_node)
-
-      with open(xml_file, 'w') as f:
-        f.write(xml_node.SerializeToString())
-
-    # Overwrite the original zip file.
-    build_utils.ZipDir(zip_path, tmp_dir)
+  # Filtering is slow, so ensure jobs with keep_predicate are started first.
+  job_params.sort(key=lambda x: not x[2])
+  return list(
+      parallel.BulkForkAndCall(_CompileSingleDep,
+                               job_params,
+                               aapt2_path=aapt2_path,
+                               partials_dir=partials_dir))
 
 
 def _CreateResourceInfoFile(path_info, info_path, dependencies_res_zips):
@@ -889,11 +699,6 @@ def _RemoveUnwantedLocalizedStrings(dep_subdirs, options):
     dep_subdirs: List of resource dependency directories.
     options: Command-line options namespace.
   """
-  if (not options.locale_allowlist
-      and not options.shared_resources_allowlist_locales):
-    # Keep everything, there is nothing to do.
-    return
-
   # Collect locale and file paths from the existing subdirs.
   # The following variable maps Android locale names to
   # sets of corresponding xml file paths.
@@ -947,6 +752,21 @@ def _RemoveUnwantedLocalizedStrings(dep_subdirs, options):
           path, lambda x: x not in shared_names_allowlist)
 
 
+def _FilterResourceFiles(dep_subdirs, keep_predicate):
+  # Create a function that selects which resource files should be packaged
+  # into the final output. Any file that does not pass the predicate will
+  # be removed below.
+  png_paths = []
+  for directory in dep_subdirs:
+    for f in _IterFiles(directory):
+      if not keep_predicate(f):
+        os.remove(f)
+      elif f.endswith('.png'):
+        png_paths.append(f)
+
+  return png_paths
+
+
 def _PackageApk(options, build):
   """Compile and link resources with aapt2.
 
@@ -965,21 +785,15 @@ def _PackageApk(options, build):
     _DuplicateZhResources(dep_subdirs, path_info)
   _RenameLocaleResourceDirs(dep_subdirs, path_info)
 
-  _RemoveUnwantedLocalizedStrings(dep_subdirs, options)
-
-  # Create a function that selects which resource files should be packaged
-  # into the final output. Any file that does not pass the predicate will
-  # be removed below.
   logging.debug('Applying file-based exclusions')
   keep_predicate = _CreateKeepPredicate(options.resource_exclusion_regex,
                                         options.resource_exclusion_exceptions)
-  png_paths = []
-  for directory in dep_subdirs:
-    for f in _IterFiles(directory):
-      if not keep_predicate(f):
-        os.remove(f)
-      elif f.endswith('.png'):
-        png_paths.append((f, directory))
+  png_paths = _FilterResourceFiles(dep_subdirs, keep_predicate)
+
+  if options.locale_allowlist or options.shared_resources_allowlist_locales:
+    logging.debug('Applying locale-based string exclusions')
+    _RemoveUnwantedLocalizedStrings(dep_subdirs, options)
+
   if png_paths and options.png_to_webp:
     logging.debug('Converting png->webp')
     _ConvertToWebP(options.webp_binary, png_paths, path_info,
@@ -988,6 +802,11 @@ def _PackageApk(options, build):
   for directory in dep_subdirs:
     _MoveImagesToNonMdpiFolders(directory, path_info)
     _RemoveImageExtensions(directory, path_info)
+
+  logging.debug('Running aapt2 compile')
+  exclusion_rules = [x.split(':', 1) for x in options.values_filter_rules]
+  partials = _CompileDeps(options.aapt2_path, dep_subdirs, build.temp_dir,
+                          exclusion_rules)
 
   link_command = [
       options.aapt2_path,
@@ -1051,8 +870,6 @@ def _PackageApk(options, build):
                          desired_manifest_package_name)
     link_command += ['--stable-ids', build.stable_ids_path]
 
-  logging.debug('Running aapt2 compile (and jetify)')
-  partials = _CompileDeps(options.aapt2_path, dep_subdirs, build.temp_dir)
   for partial in partials:
     link_command += ['-R', partial]
 
@@ -1099,7 +916,10 @@ def _PackageApk(options, build):
   # affect WebView usage, since WebView does not used dynamic attributes.
   if options.shared_resources:
     logging.debug('Hardcoding dynamic attributes')
-    _HardcodeSharedLibraryDynamicAttributes(build.proto_path, options)
+    protoresources.HardcodeSharedLibraryDynamicAttributes(
+        build.proto_path, options.is_bundle_module,
+        options.shared_resources_allowlist)
+
     build_utils.CheckOutput([
         options.aapt2_path, 'convert', '--output-format', 'binary', '-o',
         build.arsc_path, build.proto_path
@@ -1271,7 +1091,8 @@ def _OnStaleMd5(options):
       if options.shared_resources:
         # The final resources will only be used in WebLayer, so hardcode the
         # package ID to be what WebLayer expects.
-        rjava_build_options.SetFinalPackageId(_SHARED_LIBRARY_HARDCODED_ID)
+        rjava_build_options.SetFinalPackageId(
+            protoresources.SHARED_LIBRARY_HARDCODED_ID)
     elif options.shared_resources or options.app_as_shared_lib:
       rjava_build_options.ExportAllResources()
       rjava_build_options.GenerateOnResourcesLoaded()
@@ -1370,6 +1191,7 @@ def main(args):
       options.strip_resource_names,
       options.support_zh_hk,
       options.target_sdk_version,
+      options.values_filter_rules,
       options.version_code,
       options.version_name,
       options.webp_cache_dir,

@@ -34,6 +34,9 @@ class EmuTarget(target.Target):
     """Build the command that will be run to start Fuchsia in the emulator."""
     pass
 
+  def _SetEnv(self):
+    return os.environ.copy()
+
   # Used by the context manager to ensure that the emulator is killed when
   # the Python process exits.
   def __exit__(self, exc_type, exc_val, exc_tb):
@@ -58,17 +61,19 @@ class EmuTarget(target.Target):
     temporary_system_log_file = None
     if self._system_log_file:
       stdout = self._system_log_file
-      stderr = subprocess.STDOUT
     else:
       temporary_system_log_file = tempfile.NamedTemporaryFile('w')
       stdout = temporary_system_log_file
-      stderr = sys.stderr
-
-    self._emu_process = subprocess.Popen(emu_command, stdin=open(os.devnull),
-                                          stdout=stdout, stderr=stderr)
+    stderr = subprocess.STDOUT
+    emu_env = self._SetEnv()
+    self._emu_process = subprocess.Popen(emu_command,
+                                         stdin=open(os.devnull),
+                                         stdout=stdout,
+                                         stderr=stderr,
+                                         env=emu_env)
 
     try:
-      self._WaitUntilReady();
+      self._WaitUntilReady()
     except target.FuchsiaTargetException:
       if temporary_system_log_file:
         logging.info('Kernel logs:\n' +
@@ -82,9 +87,22 @@ class EmuTarget(target.Target):
     return self._amber_repo
 
   def Shutdown(self):
-    if self._IsEmuStillRunning():
+    if not self._emu_process:
+      logging.error('%s did not start' % (self._GetEmulatorName()))
+      return
+    returncode = self._emu_process.poll()
+    if returncode == None:
       logging.info('Shutting down %s' % (self._GetEmulatorName()))
       self._emu_process.kill()
+    elif returncode == 0:
+      logging.info('%s quit unexpectedly without errors' %
+                   self._GetEmulatorName())
+    elif returncode < 0:
+      logging.error('%s was terminated by signal %d' %
+                    (self._GetEmulatorName(), -returncode))
+    else:
+      logging.error('%s quit unexpectedly with exit code %d' %
+                    (self._GetEmulatorName(), returncode))
 
   def _IsEmuStillRunning(self):
     if not self._emu_process:

@@ -435,6 +435,12 @@ def AddInstrumentationTestOptions(parser):
       help='Specify Android App Bundle modules to fake install in addition to '
       'the real modules.')
   parser.add_argument(
+      '--additional-locale',
+      action='append',
+      dest='additional_locales',
+      help='Specify locales in addition to the device locale to install splits '
+      'for when --apk-under-test is an Android App Bundle.')
+  parser.add_argument(
       '--coverage-dir',
       type=os.path.realpath,
       help='Directory in which to place all generated '
@@ -532,6 +538,13 @@ def AddInstrumentationTestOptions(parser):
       '-w', '--wait-for-java-debugger', action='store_true',
       help='Wait for java debugger to attach before running any application '
            'code. Also disables test timeouts and sets retries=0.')
+
+  # WPR record mode.
+  parser.add_argument('--wpr-enable-record',
+                      action='store_true',
+                      default=False,
+                      help='If true, WPR server runs in record mode.'
+                      'otherwise, runs in replay mode.')
 
   # These arguments are suppressed from the help text because they should
   # only ever be specified by an intermediate script.
