@@ -30,8 +30,23 @@ _JAVAC_EXTRACTOR = os.path.join(build_utils.DIR_SOURCE_ROOT, 'third_party',
 
 # Full list of checks: https://errorprone.info/bugpatterns
 ERRORPRONE_WARNINGS_TO_TURN_OFF = [
-    # This one should really be turned on.
+    # These 2 should really be turned on.
     'ParameterNotNullable',
+    'CollectionUndefinedEquality',
+    'ModifyCollectionInEnhancedForLoop',
+    # The following 12 are super useful, but too many existing issues.
+    'InvalidParam',
+    'InvalidLink',
+    'InvalidInlineTag',
+    'EmptyBlockTag',
+    'PublicConstructorForAbstractClass',
+    'InvalidBlockTag',
+    'StaticAssignmentInConstructor',
+    'MutablePublicArray',
+    'UnescapedEntity',
+    'NonCanonicalType',
+    'ProtectedMembersInFinalClass',
+    'AlmostJavadoc',
     # TODO(crbug.com/834807): Follow steps in bug
     'DoubleBraceInitialization',
     # TODO(crbug.com/834790): Follow steps in bug.
@@ -134,6 +149,20 @@ ERRORPRONE_WARNINGS_TO_TURN_OFF = [
     'UnnecessaryAnonymousClass',
     # Nice to have.
     'LiteProtoToString',
+    # Nice to have.
+    'MissingSummary',
+    # Nice to have.
+    'ReturnFromVoid',
+    # Nice to have.
+    'EmptyCatch',
+    # Nice to have.
+    'BadImport',
+    # Nice to have.
+    'UseCorrectAssertInTests',
+    # Nice to have.
+    'InlineFormatString',
+    # Nice to have.
+    'DefaultPackage',
     # Must be off since we are now passing in annotation processor generated
     # code as a source jar (deduplicating work with turbine).
     'RefersToDaggerCodegen',
