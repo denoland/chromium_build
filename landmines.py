@@ -55,9 +55,10 @@ def get_build_dir(src_dir):
   return os.path.abspath(os.path.join(src_dir, output_dir))
 
 
-def clobber_if_necessary(new_landmines, src_dir, landmines_path):
+def clobber_if_necessary(new_landmines, src_dir):
   """Does the work of setting, planting, and triggering landmines."""
   out_dir = get_build_dir(src_dir)
+  landmines_path = os.path.normpath(os.path.join(src_dir, '.landmines'))
   try:
     os.makedirs(out_dir)
   except OSError as e:
@@ -94,10 +95,6 @@ def process_options():
   parser.add_option('-d', '--src-dir',
       help='Path of the source root dir. Overrides the default location of the '
            'source root dir when calculating the build directory.')
-  parser.add_option(
-      '-l',
-      '--landmines-path',
-      help='Path to the landmines file to use (defaults to .landmines)')
   parser.add_option('-v', '--verbose', action='store_true',
       default=('LANDMINES_VERBOSE' in os.environ),
       help=('Emit some extra debugging information (default off). This option '
@@ -140,12 +137,7 @@ def main():
                             universal_newlines=True)
     output, _ = proc.communicate()
     landmines.extend([('%s\n' % l.strip()) for l in output.splitlines()])
-  if options.landmines_path:
-    landmines_path = options.landmines_path
-  else:
-    landmines_path = os.path.join(options.src_dir, '.landmines')
-  clobber_if_necessary(landmines, options.src_dir,
-                       os.path.normpath(landmines_path))
+  clobber_if_necessary(landmines, options.src_dir)
 
   return 0
 
