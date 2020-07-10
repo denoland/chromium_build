@@ -3043,7 +3043,6 @@ if (enable_java_templates) {
           filter_exclude(
               [ get_label_info(":$target_name", "label_no_toolchain") ],
               [
-                "//android_webview*",
                 "//base*",
                 "//chrome*",
                 "//clank*",
