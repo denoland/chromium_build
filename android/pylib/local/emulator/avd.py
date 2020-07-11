@@ -524,8 +524,6 @@ class _AvdInstance(object):
           '-report-console',
           'unix:%s' % socket_path,
           '-no-boot-anim',
-          # crbug.com/1093602: Disable GLDMA to see if it can fix timout issue
-          '-feature', '-GLDMA',
       ]
 
       if read_only:
