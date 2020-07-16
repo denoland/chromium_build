@@ -3042,7 +3042,6 @@ if (enable_java_templates) {
                 "//clank*",
                 "//components*",
                 "//content*",
-                "//media*",
                 "//mojo*",
                 "//net*",
                 "//remoting*",
