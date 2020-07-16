@@ -22,7 +22,9 @@ def _ParseArguments():
 
   arg_parser.add_argument(
       'command',
-      help='Command to execute the tests. For example: "./url_unittests')
+      help='A single command to invoke the tests, for example: '
+      '"./url_unittests". Any argument unknown to this test runner script will '
+      'be forwarded to the command, for example: "--gtest_filter=Suite.Test"')
 
   args = arg_parser.parse_known_args()
   return args[0], args[1]
