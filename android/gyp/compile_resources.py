@@ -1099,6 +1099,7 @@ def _OnStaleMd5(options):
 
     custom_root_package_name = options.r_java_root_package_name
     grandparent_custom_package_name = None
+    apk_package_name = manifest_package_name
 
     if options.package_name and not options.arsc_package_name:
       # Feature modules have their own custom root package name and should
@@ -1108,15 +1109,14 @@ def _OnStaleMd5(options):
       # apk under test.
       custom_root_package_name = options.package_name
       grandparent_custom_package_name = options.r_java_root_package_name
-
-    if options.shared_resources or options.app_as_shared_lib:
-      package_for_library = manifest_package_name
-    else:
-      package_for_library = None
+      # Feature modules have the same manifest package as the base module but
+      # they should not create an R.java for said manifest package because it
+      # will be created in the base module.
+      apk_package_name = None
 
     logging.debug('Creating R.srcjar')
     resource_utils.CreateRJavaFiles(
-        build.srcjar_dir, package_for_library, build.r_txt_path,
+        build.srcjar_dir, apk_package_name, build.r_txt_path,
         options.extra_res_packages, rjava_build_options, options.srcjar_out,
         custom_root_package_name, grandparent_custom_package_name,
         options.extra_main_r_text_files)
