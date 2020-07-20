@@ -3067,8 +3067,6 @@ if (enable_java_templates) {
           filter_exclude(
               [ get_label_info(":$target_name", "label_no_toolchain") ],
               [
-                "//chrome/browser*",
-                "//clank*",
                 "//components*",
 
                 # This is due to the "special group" bypass.
