@@ -376,6 +376,8 @@ Still reading?
     <ignore regexp="android_webview/test/shell/res/raw/resource_file.html"/>
     <ignore regexp="android_webview/test/shell/res/raw/resource_icon.png"/>
     <ignore regexp="android_webview/tools/automated_ui_tests/java/res/layout/"/>
+    <!-- 1: resource in //ui because it's used by multiple deps. -->
+    <ignore regexp="The resource `R.drawable.*_expand_.*` appears to be unused"/>
     <!-- 3: WebView uses some //components/browser_ui resources, but not all (crbug.com/1099842). -->
     <ignore regexp="components/browser_ui/styles/"/>
     <ignore regexp="components/browser_ui/widget/"/>
