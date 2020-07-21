@@ -86,8 +86,9 @@ declare_args() {
   # We currently only have default profiles for Chromium in-tree, so we disable
   # this by default for all downstream projects, since these profiles are likely
   # nonsensical for said projects.
-  clang_use_default_sample_profile = build_with_chromium && is_official_build &&
-                                     (is_android || is_desktop_linux)
+  clang_use_default_sample_profile =
+      chrome_pgo_phase == 0 && build_with_chromium && is_official_build &&
+      (is_android || is_desktop_linux)
 
   # This configuration is used to select a default profile in Chrome OS based on
   # the microarchitectures we are using. This is only used if
@@ -2195,6 +2196,7 @@ config("afdo") {
       }
     }
     if (_clang_sample_profile != "") {
+      assert(chrome_pgo_phase == 0, "AFDO can't be used in PGO builds")
       rebased_clang_sample_profile =
           rebase_path(_clang_sample_profile, root_build_dir)
       cflags += [ "-fprofile-sample-use=${rebased_clang_sample_profile}" ]
