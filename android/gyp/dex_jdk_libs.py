@@ -51,7 +51,7 @@ def DexJdkLibJar(r8_path, min_api, desugar_jdk_libs_json, desugar_jdk_libs_jar,
 
     cmd += ['--output', tmp_dir, desugar_jdk_libs_jar]
 
-    build_utils.CheckOutput(cmd, print_stdout=True)
+    subprocess.check_output(cmd, stderr=subprocess.STDOUT)
     if os.path.exists(os.path.join(tmp_dir, 'classes2.dex')):
       raise Exception('Achievement unlocked: desugar_jdk_libs is multidex!')
 
