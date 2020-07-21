@@ -35,17 +35,6 @@
     </issue>
 
     <issue
-        id="MissingSuperCall"
-        message="Overriding method should call `super.onNewIntent`"
-        errorLine1="    protected void onNewIntent(Intent intent) {"
-        errorLine2="                   ~~~~~~~~~~~">
-        <location
-            file="android_webview/nonembedded/java/src/org/chromium/android_webview/devui/MainActivity.java"
-            line="207"
-            column="20"/>
-    </issue>
-
-    <issue
         id="ResourceType"
         message="Expected a color resource id (`R.color.`) but received an RGB integer"
         errorLine1="                        primaryColor, getContext());"
@@ -399,17 +388,6 @@
             file="chrome/android/feed/core/java/src/org/chromium/chrome/browser/feed/library/feedmodelprovider/FeedModelProvider.java"
             line="902"
             column="50"/>
-    </issue>
-
-    <issue
-        id="WrongConstant"
-        message="Must be one of: MenuChoice.SWITCH_PROVIDER, MenuChoice.REPORT_BUG, MenuChoice.CHECK_UPDATES, MenuChoice.CRASHES_REFRESH"
-        errorLine1="            logMenuSelection(MenuChoice.ABOUT_DEVTOOLS);"
-        errorLine2="                             ~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="android_webview/nonembedded/java/src/org/chromium/android_webview/devui/MainActivity.java"
-            line="293"
-            column="30"/>
     </issue>
 
     <issue
