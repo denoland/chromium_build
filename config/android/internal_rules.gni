@@ -3097,7 +3097,7 @@ if (enable_java_templates) {
           filter_exclude(
               [ get_label_info(":$target_name", "label_no_toolchain") ],
               [
-                "//components*",
+                "//components/cronet*",
 
                 # This is due to the "special group" bypass.
                 "*_bundle_module__java__header",
