@@ -3315,10 +3315,13 @@ if (enable_java_templates) {
             _static_library_apk_path,
           ]
         }
+        if (!defined(data)) {
+          data = []
+        }
         if (_proguard_enabled && !_incremental_apk) {
           # Required by logcat command.
           data_deps += [ "//build/android/stacktrace:java_deobfuscate" ]
-          data = [ "$_final_apk_path.mapping" ]
+          data += [ "$_final_apk_path.mapping" ]
           args += [
             "--proguard-mapping-path",
             rebase_path("$_final_apk_path.mapping", root_build_dir),
