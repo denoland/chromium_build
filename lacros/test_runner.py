@@ -12,6 +12,7 @@ import argparse
 import os
 import logging
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -214,11 +215,41 @@ def _RunTestWithAshChrome(args, forward_args):
     shutil.rmtree(tmp_ash_data_dir_name, ignore_errors=True)
 
 
+def _RunTestDirectly(args, forward_args):
+  """Runs tests by invoking the test command directly.
+
+  args (dict): Args for this script.
+  forward_args (dict): Args to be forwarded to the test command.
+  """
+  try:
+    p = None
+    p = subprocess.Popen([args.command] + forward_args)
+    return p.wait()
+  finally:
+    if p and p.poll() is None:
+      p.terminate()
+      time.sleep(0.5)
+      p.kill()
+
+
+def _HandleSignal(sig, _):
+  """Handles received signals to make sure spawned test process are killed.
+
+  sig (int): An integer representing the received signal, for example SIGTERM.
+  """
+  logging.warning('Received signal: %d, killing spawned processes', sig)
+
+  # Don't do any cleanup here, instead, leave it to the finally blocks.
+  # Assumption is based on https://docs.python.org/3/library/sys.html#sys.exit:
+  # cleanup actions specified by finally clauses of try statements are honored.
+
+  # https://tldp.org/LDP/abs/html/exitcodes.html:
+  # Exit code 128+n -> Fatal error signal "n".
+  sys.exit(128 + sig)
+
+
 def _RunTest(args, forward_args):
   """Runs tests with given args.
-
-  TODO(crbug.com/1035562): Trap signals to make sure that spawned test process
-  and ash-chrome process are always cleaned up correctly.
 
   args (dict): Args for this script.
   forward_args (dict): Args to be forwarded to the test command.
@@ -238,12 +269,15 @@ def _RunTest(args, forward_args):
   # automated CI/CQ builders would always work correctly.
   if (os.path.basename(args.command) not in _TARGETS_REQUIRE_ASH_CHROME
       and not args.ash_chrome_version):
-    return subprocess.call([args.command] + forward_args)
+    return _RunTestDirectly(args, forward_args)
 
   return _RunTestWithAshChrome(args, forward_args)
 
 
 def Main():
+  for sig in (signal.SIGTERM, signal.SIGINT):
+    signal.signal(sig, _HandleSignal)
+
   logging.basicConfig(level=logging.INFO)
   arg_parser = argparse.ArgumentParser()
   arg_parser.usage = __doc__
