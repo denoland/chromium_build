@@ -3091,7 +3091,19 @@ if (enable_java_templates) {
         ]
       }
 
-      if (invoker.use_turbine) {
+      # Temporarily allow a list of directories to bypass turbine direct deps.
+      # TODO(crbug.com/1082904): Remove every entry in this allowlist.
+      _allow_transitive_interfaces =
+          filter_exclude(
+              [ get_label_info(":$target_name", "label_no_toolchain") ],
+              [
+                "//components/cronet*",
+
+                # This is due to the "special group" bypass.
+                "*_bundle_module__java__header",
+              ]) == []
+
+      if (invoker.use_turbine && !_allow_transitive_interfaces) {
         # Prefer direct deps for turbine as much as possible.
         args += [ "--classpath=@FileArg($_rebased_build_config:javac:interface_classpath)" ]
       } else {
