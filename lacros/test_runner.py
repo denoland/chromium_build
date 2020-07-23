@@ -3,9 +3,37 @@
 # Copyright 2020 The Chromium Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
-"""This script facilitates running tests for lacros.
+"""This script facilitates running tests for lacros on Linux.
 
-TODO(crbug.com/1104318): Document an overview and example usages.
+  In order to run lacros tests on Linux, please first follow bit.ly/3juQVNJ
+  to setup build directory with the lacros-chrome-on-linux build configuration,
+  and corresponding test targets are built successfully.
+
+  * Example usages:
+
+  ./build/lacros/test_runner.py test out/lacros/url_unittests
+  ./build/lacros/test_runner.py test out/lacros/browser_tests
+
+  The commands above run url_unittests and browser_tests respecitively, and more
+  specifically, url_unitests is executed directly while browser_tests is
+  executed with the latest version of prebuilt ash-chrome, and the behavior is
+  controlled by |_TARGETS_REQUIRE_ASH_CHROME|, and it's worth noting that the
+  list is maintained manually, so if you see something is wrong, please upload a
+  CL to fix it.
+
+  ./build/lacros/test_runner.py test out/lacros/browser_tests \\
+      --gtest_filter=BrowserTest.Title
+
+  The above command only runs 'BrowserTest.Title', and any argument accepted by
+  the underlying test binary can be specified in the command.
+
+  ./build/lacros/test_runner.py test out/lacros/browser_tests \\
+    --ash-chrome-version=86.0.4187.0
+
+  The above command runs tests with a given version of ash-chrome, which is
+  useful to reproduce test failures, and a list of prebuilt versions can be
+  found at: {link}. TODO(crbug.com/1035562): replace version with real scheme
+  and {link} with real link once ash-chrome is built and uploaded continuously.
 """
 
 import argparse
