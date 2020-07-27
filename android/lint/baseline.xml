@@ -3330,61 +3330,6 @@
     <issue
         id="VisibleForTests"
         message="This method should only be accessed from tests or within private scope"
-        errorLine1="        Boolean testValue = FeatureList.getTestValueForFeature(featureName);"
-        errorLine2="                                        ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="chrome/browser/flags/android/java/src/org/chromium/chrome/browser/flags/ChromeFeatureList.java"
-            line="108"
-            column="41"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="        if (FeatureList.hasTestFeatures()) return &quot;&quot;;"
-        errorLine2="                        ~~~~~~~~~~~~~~~">
-        <location
-            file="chrome/browser/flags/android/java/src/org/chromium/chrome/browser/flags/ChromeFeatureList.java"
-            line="125"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="        if (FeatureList.hasTestFeatures()) return defaultValue;"
-        errorLine2="                        ~~~~~~~~~~~~~~~">
-        <location
-            file="chrome/browser/flags/android/java/src/org/chromium/chrome/browser/flags/ChromeFeatureList.java"
-            line="144"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="        if (FeatureList.hasTestFeatures()) return defaultValue;"
-        errorLine2="                        ~~~~~~~~~~~~~~~">
-        <location
-            file="chrome/browser/flags/android/java/src/org/chromium/chrome/browser/flags/ChromeFeatureList.java"
-            line="164"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="        if (FeatureList.hasTestFeatures()) return defaultValue;"
-        errorLine2="                        ~~~~~~~~~~~~~~~">
-        <location
-            file="chrome/browser/flags/android/java/src/org/chromium/chrome/browser/flags/ChromeFeatureList.java"
-            line="184"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
         errorLine1="            mOfflinePageUrl = offlinePage.getUrl();"
         errorLine2="            ~~~~~~~~~~~~~~~">
         <location
@@ -3572,17 +3517,6 @@
     <issue
         id="VisibleForTests"
         message="This method should only be accessed from tests or within private scope"
-        errorLine1="        Boolean testValue = FeatureList.getTestValueForFeature(featureName);"
-        errorLine2="                                        ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="components/content_settings/android/java/src/org/chromium/components/content_settings/ContentSettingsFeatureList.java"
-            line="47"
-            column="41"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
         errorLine1="                IconProvider.getIcon(context, R.drawable.infobar_autofill_cc),"
         errorLine2="                             ~~~~~~~">
         <location
@@ -3699,17 +3633,6 @@
             file="base/android/java/src/org/chromium/base/task/DefaultTaskExecutor.java"
             line="66"
             column="28"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="        Boolean testValue = FeatureList.getTestValueForFeature(featureName);"
-        errorLine2="                                        ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="services/device/public/java/src/org/chromium/device/DeviceFeatureList.java"
-            line="33"
-            column="41"/>
     </issue>
 
     <issue
@@ -4848,17 +4771,6 @@
     <issue
         id="VisibleForTests"
         message="This method should only be accessed from tests or within private scope"
-        errorLine1="        Boolean testValue = FeatureList.getTestValueForFeature(featureName);"
-        errorLine2="                                        ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="components/page_info/android/java/src/org/chromium/components/page_info/PageInfoFeatureList.java"
-            line="34"
-            column="41"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
         errorLine1="        if (!browserCustomizations.isInitialized()) {"
         errorLine2="                                   ~~~~~~~~~~~~~">
         <location
@@ -5646,17 +5558,6 @@
             file="components/browser_ui/site_settings/android/java/src/org/chromium/components/browser_ui/site_settings/SiteDataCleaner.java"
             line="24"
             column="42"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="        Boolean testValue = FeatureList.getTestValueForFeature(featureName);"
-        errorLine2="                                        ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="components/browser_ui/site_settings/android/java/src/org/chromium/components/browser_ui/site_settings/SiteSettingsFeatureList.java"
-            line="34"
-            column="41"/>
     </issue>
 
     <issue
