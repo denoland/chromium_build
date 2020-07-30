@@ -1737,6 +1737,9 @@ if (enable_java_templates) {
         rebase_path(invoker.output, root_build_dir),
         "--min-api=${invoker.min_sdk_version}",
       ]
+      if (treat_warnings_as_errors) {
+        args += [ "--warnings-as-errors" ]
+      }
     }
   }
 
