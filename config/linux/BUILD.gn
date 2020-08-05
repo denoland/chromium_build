@@ -42,7 +42,6 @@ config("x11") {
     "xcb",
     "xcb-dri3",
     "Xcomposite",
-    "Xcursor",
     "Xdamage",
     "Xext",
     "Xfixes",
@@ -58,14 +57,6 @@ config("xcomposite") {
 
 config("xext") {
   libs = [ "Xext" ]
-}
-
-config("xrandr") {
-  libs = [ "Xrandr" ]
-}
-
-config("xscrnsaver") {
-  libs = [ "Xss" ]
 }
 
 config("xfixes") {

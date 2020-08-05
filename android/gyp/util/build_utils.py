@@ -234,10 +234,14 @@ def FilterReflectiveAccessJavaWarnings(output):
 # This can be used in most cases like subprocess.check_output(). The output,
 # particularly when the command fails, better highlights the command's failure.
 # If the command fails, raises a build_utils.CalledProcessError.
-def CheckOutput(args, cwd=None, env=None,
-                print_stdout=False, print_stderr=True,
+def CheckOutput(args,
+                cwd=None,
+                env=None,
+                print_stdout=False,
+                print_stderr=True,
                 stdout_filter=None,
                 stderr_filter=None,
+                fail_on_output=True,
                 fail_func=lambda returncode, stderr: returncode != 0):
   if not cwd:
     cwd = os.getcwd()
@@ -252,13 +256,28 @@ def CheckOutput(args, cwd=None, env=None,
   if stderr_filter is not None:
     stderr = stderr_filter(stderr)
 
-  if fail_func(child.returncode, stderr):
+  if fail_func and fail_func(child.returncode, stderr):
     raise CalledProcessError(cwd, args, stdout + stderr)
 
   if print_stdout:
     sys.stdout.write(stdout)
   if print_stderr:
     sys.stderr.write(stderr)
+
+  has_stdout = print_stdout and stdout
+  has_stderr = print_stderr and stderr
+  if fail_on_output and (has_stdout or has_stderr):
+    MSG = """\
+Command failed because it wrote to {}.
+You can often set treat_warnings_as_errors=false to not treat output as \
+failure (useful when developing locally)."""
+    if has_stdout and has_stderr:
+      stream_string = 'stdout and stderr'
+    elif has_stdout:
+      stream_string = 'stdout'
+    else:
+      stream_string = 'stderr'
+    raise CalledProcessError(cwd, args, MSG.format(stream_string))
 
   return stdout
 
@@ -541,49 +560,6 @@ def GetSortedTransitiveDependencies(top, deps_func):
   return list(deps_map)
 
 
-def ComputePythonDependencies():
-  """Gets the paths of imported non-system python modules.
-
-  A path is assumed to be a "system" import if it is outside of chromium's
-  src/. The paths will be relative to the current directory.
-  """
-  _ForceLazyModulesToLoad()
-  module_paths = (m.__file__ for m in sys.modules.values()
-                  if m is not None and hasattr(m, '__file__'))
-  abs_module_paths = map(os.path.abspath, module_paths)
-
-  abs_dir_source_root = os.path.abspath(DIR_SOURCE_ROOT)
-  non_system_module_paths = [
-      p for p in abs_module_paths if p.startswith(abs_dir_source_root)
-  ]
-
-  def ConvertPycToPy(s):
-    if s.endswith('.pyc'):
-      return s[:-1]
-    return s
-
-  non_system_module_paths = map(ConvertPycToPy, non_system_module_paths)
-  non_system_module_paths = map(os.path.relpath, non_system_module_paths)
-  return sorted(set(non_system_module_paths))
-
-
-def _ForceLazyModulesToLoad():
-  """Forces any lazily imported modules to fully load themselves.
-
-  Inspecting the modules' __file__ attribute causes lazily imported modules
-  (e.g. from email) to get fully imported and update sys.modules. Iterate
-  over the values until sys.modules stabilizes so that no modules are missed.
-  """
-  while True:
-    num_modules_before = len(sys.modules.keys())
-    for m in sys.modules.values():
-      if m is not None and hasattr(m, '__file__'):
-        _ = m.__file__
-    num_modules_after = len(sys.modules.keys())
-    if num_modules_before == num_modules_after:
-      break
-
-
 def InitLogging(enabling_env):
   logging.basicConfig(
       level=logging.DEBUG if os.environ.get(enabling_env) else logging.WARNING,
@@ -611,12 +587,10 @@ def AddDepfileOption(parser):
        help='Path to depfile (refer to `gn help depfile`)')
 
 
-def WriteDepfile(depfile_path, first_gn_output, inputs=None, add_pydeps=True):
+def WriteDepfile(depfile_path, first_gn_output, inputs=None):
   assert depfile_path != first_gn_output  # http://crbug.com/646165
   assert not isinstance(inputs, string_types)  # Easy mistake to make
   inputs = inputs or []
-  if add_pydeps:
-    inputs = ComputePythonDependencies() + inputs
   MakeDirectory(os.path.dirname(depfile_path))
   # Ninja does not support multiple outputs in depfiles.
   with open(depfile_path, 'w') as depfile:

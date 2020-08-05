@@ -139,9 +139,16 @@ def _LoadToolchainEnv(cpu, sdk_dir, target_store):
     if not os.path.exists(script_path):
       # vcvarsall.bat for VS 2017 fails if run after running vcvarsall.bat from
       # VS 2013 or VS 2015. Fix this by clearing the vsinstalldir environment
-      # variable.
+      # variable. Since vcvarsall.bat appends to the INCLUDE, LIB, and LIBPATH
+      # environment variables we need to clear those to avoid getting double
+      # entries when vcvarsall.bat has been run before gn gen. vcvarsall.bat
+      # also adds to PATH, but there is no clean way of clearing that and it
+      # doesn't seem to cause problems.
       if 'VSINSTALLDIR' in os.environ:
         del os.environ['VSINSTALLDIR']
+        del os.environ['INCLUDE']
+        del os.environ['LIB']
+        del os.environ['LIBPATH']
       other_path = os.path.normpath(os.path.join(
                                         os.environ['GYP_MSVS_OVERRIDE_PATH'],
                                         'VC/Auxiliary/Build/vcvarsall.bat'))
@@ -153,10 +160,14 @@ def _LoadToolchainEnv(cpu, sdk_dir, target_store):
     if (cpu != 'x64'):
       # x64 is default target CPU thus any other CPU requires a target set
       cpu_arg += '_' + cpu
-    args = [script_path, cpu_arg]
+    args = [script_path, cpu_arg, ]
     # Store target must come before any SDK version declaration
     if (target_store):
-      args.append(['store'])
+      args.append('store')
+    # Explicitly specifying the SDK version to build with to avoid accidentally
+    # building with a new and untested SDK. This should stay in sync with the
+    # packaged toolchain in build/vs_toolchain.py.
+    args.append('10.0.19041.0')
     variables = _LoadEnvFromBat(args)
   return _ExtractImportantEnvironment(variables)
 

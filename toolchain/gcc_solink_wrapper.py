@@ -23,9 +23,11 @@ def CollectSONAME(args):
   """Replaces: readelf -d $sofile | grep SONAME"""
   toc = ''
   readelf = subprocess.Popen(wrapper_utils.CommandToRun(
-      [args.readelf, '-d', args.sofile]), stdout=subprocess.PIPE, bufsize=-1)
+      [args.readelf, '-d', args.sofile]),
+                             stdout=subprocess.PIPE,
+                             bufsize=-1,
+                             universal_newlines=True)
   for line in readelf.stdout:
-    line = line.decode('utf-8')
     if 'SONAME' in line:
       toc += line
   return readelf.wait(), toc
@@ -34,13 +36,12 @@ def CollectSONAME(args):
 def CollectDynSym(args):
   """Replaces: nm --format=posix -g -D -p $sofile | cut -f1-2 -d' '"""
   toc = ''
-  nm = subprocess.Popen(
-      wrapper_utils.CommandToRun(
-          [args.nm, '--format=posix', '-g', '-D', '-p', args.sofile]),
-      stdout=subprocess.PIPE,
-      bufsize=-1)
+  nm = subprocess.Popen(wrapper_utils.CommandToRun(
+      [args.nm, '--format=posix', '-g', '-D', '-p', args.sofile]),
+                        stdout=subprocess.PIPE,
+                        bufsize=-1,
+                        universal_newlines=True)
   for line in nm.stdout:
-    line = line.decode('utf-8')
     toc += ' '.join(line.split(' ', 2)[:2]) + '\n'
   return nm.wait(), toc
 

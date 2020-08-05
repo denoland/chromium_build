@@ -8,6 +8,7 @@ import amber_repo
 import boot_data
 import logging
 import os
+import runner_logs
 import subprocess
 import sys
 import target
@@ -55,29 +56,32 @@ class EmuTarget(target.Target):
 
     # Zircon sends debug logs to serial port (see kernel.serial=legacy flag
     # above). Serial port is redirected to a file through emulator stdout.
-    # Unless a |_system_log_file| is explicitly set, we output the kernel serial
-    # log to a temporary file, and print that out if we are unable to connect to
+    # If runner_logs are not enabled, we output the kernel serial log
+    # to a temporary file, and print that out if we are unable to connect to
     # the emulator guest, to make it easier to diagnose connectivity issues.
-    temporary_system_log_file = None
-    if self._system_log_file:
-      stdout = self._system_log_file
+    temporary_log_file = None
+    if runner_logs.IsEnabled():
+      stdout = runner_logs.FileStreamFor('serial_log')
     else:
-      temporary_system_log_file = tempfile.NamedTemporaryFile('w')
-      stdout = temporary_system_log_file
-    stderr = subprocess.STDOUT
-    emu_env = self._SetEnv()
+      temporary_log_file = tempfile.NamedTemporaryFile('w')
+      stdout = temporary_log_file
+
+    # TODO(crbug.com/1100402): Delete when no longer needed for debug info.
+    # Log system statistics at the start of the emulator run.
+    _LogSystemStatistics('system_start_statistics_log')
+
     self._emu_process = subprocess.Popen(emu_command,
                                          stdin=open(os.devnull),
                                          stdout=stdout,
-                                         stderr=stderr,
-                                         env=emu_env)
+                                         stderr=subprocess.STDOUT,
+                                         env=self._SetEnv())
 
     try:
       self._WaitUntilReady()
     except target.FuchsiaTargetException:
-      if temporary_system_log_file:
+      if temporary_log_file:
         logging.info('Kernel logs:\n' +
-                     open(temporary_system_log_file.name, 'r').read())
+                     open(temporary_log_file.name, 'r').read())
       raise
 
   def GetAmberRepo(self):
@@ -104,6 +108,11 @@ class EmuTarget(target.Target):
       logging.error('%s quit unexpectedly with exit code %d' %
                     (self._GetEmulatorName(), returncode))
 
+    # TODO(crbug.com/1100402): Delete when no longer needed for debug info.
+    # Log system statistics at the end of the emulator run.
+    _LogSystemStatistics('system_end_statistics_log')
+
+
   def _IsEmuStillRunning(self):
     if not self._emu_process:
       return False
@@ -116,3 +125,17 @@ class EmuTarget(target.Target):
 
   def _GetSshConfigPath(self):
     return boot_data.GetSSHConfigPath(self._output_dir)
+
+
+# TODO(crbug.com/1100402): Delete when no longer needed for debug info.
+def _LogSystemStatistics(log_file_name):
+  statistics_log = runner_logs.FileStreamFor(log_file_name)
+  # Log the cpu load and process information.
+  subprocess.call(['top', '-b', '-n', '1'],
+                  stdin=open(os.devnull),
+                  stdout=statistics_log,
+                  stderr=subprocess.STDOUT)
+  subprocess.call(['ps', '-ax'],
+                  stdin=open(os.devnull),
+                  stdout=statistics_log,
+                  stderr=subprocess.STDOUT)

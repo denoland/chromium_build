@@ -42,9 +42,6 @@ Still reading?
     <ignore regexp="remoting/android/host/res/layout/main.xml"/>
   </issue>
   <issue id="ClickableViewAccessibility" severity="ignore"/>
-  <issue id="CommitPrefEdits">
-    <ignore regexp="third_party/cacheinvalidation/src/java/com/google/ipc/invalidation/ticl/android2/channel/AndroidChannelPreferences.java"/>
-  </issue>
   <issue id="ContentDescription" severity="Error">
     <ignore regexp="chromecast/internal"/>
     <ignore regexp="remoting/android/internal"/>
@@ -62,7 +59,6 @@ Still reading?
   <issue id="DefaultLocale">
     <ignore regexp="clank"/>
     <ignore regexp="com/android/tv"/>
-    <ignore regexp="third_party/cacheinvalidation/src/java/com/google/ipc/invalidation/external/client/contrib/AndroidListenerState.java"/>
     <!-- TODO(crbug.com/1081240): Fix -->
     <ignore regexp="chrome/android/feed/core/java/src/org/chromium/chrome/browser/feed/FeedSurfaceMediator.java"/>
     <!-- TODO(crbug.com/1082222): Fix -->
@@ -205,6 +201,9 @@ Still reading?
     <!-- We no longer supply class files to lint. -->
     <ignore regexp="No `.class` files were found in project"/>
   </issue>
+  <!-- We use the same baseline for all our targets. Since some targets run less
+       code than other targets, there will always be unused suppressions. -->
+  <issue id="LintBaseline" severity="ignore"/>
   <issue id="LogConditional" severity="ignore"/>
   <issue id="LongLogTag" severity="ignore"/>
   <issue id="MergeRootFrame" severity="Error">
@@ -227,6 +226,8 @@ Still reading?
   <issue id="MissingQuantity" severity="ignore"/>
   <issue id="MissingRegistered" severity="ignore"/>
   <issue id="MissingSuperCall" severity="Error">
+    <!-- TODO(wnwen): File bug to fix -->
+    <ignore regexp="remoting/android/java/src/org/chromium/chromoting/Chromoting.java"/>
     <ignore regexp="chrome/android/java/src/org/chromium/chrome/browser/widget/selection/SelectionToolbar.java"/>
   </issue>
   <issue id="MissingTranslation">
@@ -251,6 +252,8 @@ Still reading?
     <ignore regexp="components/content_capture/android/java/src/org/chromium/components/content_capture"/>
     <!-- 1: TODO(crbug.com/1085487): Fix -->
     <ignore regexp="chrome/android/javatests/src/org/chromium/chrome/browser/directactions/DirectActionTestRule.java"/>
+    <!-- 1: TODO(wnwen): File bugs to fix -->
+    <ignore regexp="android_webview/support_library/boundary_interfaces/src/org/chromium/support_lib_boundary/util/BoundaryInterfaceReflectionUtil.java"/>
     <!-- Endnote: Please specify number of suppressions when adding more -->
   </issue>
   <!-- This warning just adds a lot of false positives. -->
@@ -376,19 +379,8 @@ Still reading?
     <ignore regexp="android_webview/test/shell/res/raw/resource_file.html"/>
     <ignore regexp="android_webview/test/shell/res/raw/resource_icon.png"/>
     <ignore regexp="android_webview/tools/automated_ui_tests/java/res/layout/"/>
-    <!-- TODO(crbug.com/1017190): Remove the following 11 suppressions once we lint entire app rather
-         than each individual target -->
-    <ignore regexp="components/browser_ui/strings/android/browser_ui_strings_grd"/>
-    <ignore regexp="chrome/browser/download/android/java/res"/>
-    <ignore regexp="The resource `R.drawable.ic_file_download_36dp` appears to be unused"/>
-    <ignore regexp="The resource `R.drawable.ic_play_arrow_white_24dp` appears to be unused"/>
-    <ignore regexp="chrome/browser/ui/android/strings/ui_strings_grd"/>
+    <!-- 1: resource in //ui because it's used by multiple deps. -->
     <ignore regexp="The resource `R.drawable.*_expand_.*` appears to be unused"/>
-    <ignore regexp="The resource `R.drawable.btn_close` appears to be unused"/>
-    <ignore regexp="The resource `R.drawable.ic_more_vert_24dp_on_dark_bg` appears to be unused"/>
-    <ignore regexp="The resource `R.layout.permission_dialog` appears to be unused"/>
-    <ignore regexp="components/browser_ui/styles/android/java/res"/>
-    <ignore regexp="components/permissions/android/res/drawable"/>
     <!-- 1 resource used by android tv to generate resources.zip file -->
     <ignore regexp="chromecast/internal/shell/browser/android/java/res/drawable-hdpi/ic_settings_cast.png"/>
     <!-- 1 string used by Android's policies system, pulled from app directly -->
@@ -407,7 +399,7 @@ Still reading?
     <ignore regexp="components/page_info/android/java/res/drawable-hdpi/pageinfo_*"/>
     <!--TODO(crbug.com/1052375): Remove this suppression once PermissionParamsListBuilder moves to components.-->
     <ignore regexp="The resource `R.string.page_info_permission_ads_subtitle` appears to be unused"/>
-    <!--TODO(crbug.com/1069186): The following 12 are found when we switched to linting the entire app. -->
+    <!--TODO(crbug.com/1069186): The following 14 are found when we switched to linting the entire app. -->
     <ignore regexp="The resource `R.string.download_manager_ui_documents` appears to be unused"/>
     <ignore regexp="The resource `R.string.download_manager_offline_home` appears to be unused"/>
     <ignore regexp="The resource `R.string.ntp_learn_more_about_suggested_content` appears to be unused"/>
@@ -425,6 +417,8 @@ Still reading?
     <ignore regexp="The resource `R.plurals.public_notification_text` appears to be unused"/>
     <ignore regexp="The resource `R.mipmap.app_shortcut_icon` appears to be unused"/>
     <ignore regexp="The resource `R.mipmap.app_single_page_icon` appears to be unused"/>
+    <ignore regexp="The resource `R.string.app_banner_install` appears to be unused"/>
+    <ignore regexp="The resource `R.string.iph_download_indicator_text` appears to be unused"/>
     <!-- 1: Some strings in components_strings_grd are not used in other targets. -->
     <ignore regexp="webview_.*__lint.*components_strings_grd"/>
     <!-- Endnote: Please specify number of suppressions when adding more -->
@@ -463,6 +457,8 @@ Still reading?
   <issue id="VisibleForTests" severity="Error">
     <ignore regexp="/javatests/"/>
     <ignore regexp="/test/"/>
+    <!-- TODO(wnwen): File bug to fix -->
+    <ignore regexp="remoting/android/internal/apk/src/org/chromium/chromoting/RemotingApplication.java"/>
     <!-- TODO(crbug.com/757124): Remove all these specific Feedback files after underlying issue is resolved -->
     <!-- Underlying issue is that Android FeedbackOptions.Builder using @VisibleForTesting without 'otherwise='. -->
     <ignore regexp="clank/java/src/com/google/android/apps/chrome/feedback/FeedbackUtil.java"/>
@@ -482,5 +478,9 @@ Still reading?
     <ignore regexp="media/base/android/java/src/org/chromium/media/MediaCodecEncoder.java"/>
     <!-- Discussed in crbug.com/1069204, ignoring this class of errors since these are Q+ constants. -->
     <ignore regexp="Must be one of: LineBreaker.BREAK_STRATEGY_SIMPLE, LineBreaker.BREAK_STRATEGY_HIGH_QUALITY, LineBreaker.BREAK_STRATEGY_BALANCED"/>
+  </issue>
+  <issue id="WrongThread">
+    <!-- TODO(wnwen): File bug to fix -->
+    <ignore regexp="chrome/test/android/test_trusted_web_activity/src/org/chromium/chrome/browser/browserservices/TestTrustedWebActivityService.java"/>
   </issue>
 </lint>

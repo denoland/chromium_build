@@ -590,8 +590,11 @@ class LocalDeviceInstrumentationTestRun(
       wpr_archive_path = os.path.join(host_paths.DIR_SOURCE_ROOT,
                                       wpr_archive_relative_path)
       if not os.path.isdir(wpr_archive_path):
-        raise RuntimeError('WPRArchiveDirectory annotation should point'
-                           'to a directory only.')
+        raise RuntimeError('WPRArchiveDirectory annotation should point '
+                           'to a directory only. '
+                           '{0} exist: {1}'.format(
+                               wpr_archive_path,
+                               os.path.exists(wpr_archive_path)))
 
       archive_path = os.path.join(wpr_archive_path,
                                   self._GetUniqueTestName(test) + '.wprgo')
@@ -994,8 +997,8 @@ class LocalDeviceInstrumentationTestRun(
       # Pull everything at once instead of pulling individually, as it's
       # slightly faster since each command over adb has some overhead compared
       # to doing the same thing locally.
-      device.PullFile(gold_dir, host_dir)
       host_dir = os.path.join(host_dir, _DEVICE_GOLD_DIR)
+      device.PullFile(gold_dir, host_dir)
       for image_name in os.listdir(host_dir):
         if not image_name.endswith('.png'):
           continue
@@ -1077,8 +1080,9 @@ class LocalDeviceInstrumentationTestRun(
           _AppendToLog(results,
                        'Gold initialization failed with output %s' % error)
         elif status == status_codes.COMPARISON_FAILURE_REMOTE:
-          triage_link = gold_session.GetTriageLink(render_name)
-          if not triage_link:
+          public_triage_link, internal_triage_link =\
+              gold_session.GetTriageLinks(render_name)
+          if not public_triage_link:
             _AppendToLog(
                 results, 'Failed to get triage link for %s, raw output: %s' %
                 (render_name, error))
@@ -1087,12 +1091,19 @@ class LocalDeviceInstrumentationTestRun(
                 gold_session.GetTriageLinkOmissionReason(render_name))
             continue
           if gold_properties.IsTryjobRun():
-            _SetLinkOnResults(results, 'Skia Gold triage link for entire CL',
-                              triage_link)
-          else:
             _SetLinkOnResults(results,
-                              'Skia Gold triage link for %s' % render_name,
-                              triage_link)
+                              'Public Skia Gold triage link for entire CL',
+                              public_triage_link)
+            _SetLinkOnResults(results,
+                              'Internal Skia Gold triage link for entire CL',
+                              internal_triage_link)
+          else:
+            _SetLinkOnResults(
+                results, 'Public Skia Gold triage link for %s' % render_name,
+                public_triage_link)
+            _SetLinkOnResults(
+                results, 'Internal Skia Gold triage link for %s' % render_name,
+                internal_triage_link)
           _AppendToLog(results, failure_log)
 
         elif status == status_codes.COMPARISON_FAILURE_LOCAL:
