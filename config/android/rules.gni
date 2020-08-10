@@ -3330,6 +3330,7 @@ if (enable_java_templates) {
       android_lint("${target_name}__lint") {
         forward_variables_from(invoker,
                                [
+                                 "lint_baseline_file",
                                  "lint_suppressions_dep",
                                  "lint_suppressions_file",
                                  "manifest_package",
@@ -3347,6 +3348,7 @@ if (enable_java_templates) {
       not_needed(invoker,
                  [
                    "manifest_package",
+                   "lint_baseline_file",
                    "lint_min_sdk_version",
                  ])
     }
@@ -3456,6 +3458,7 @@ if (enable_java_templates) {
                                "keystore_name",
                                "keystore_password",
                                "keystore_path",
+                               "lint_baseline_file",
                                "lint_min_sdk_version",
                                "lint_suppressions_dep",
                                "lint_suppressions_file",
@@ -4996,6 +4999,7 @@ if (enable_java_templates) {
       android_lint("${target_name}__lint") {
         forward_variables_from(invoker,
                                [
+                                 "lint_baseline_file",
                                  "lint_suppressions_dep",
                                  "lint_suppressions_file",
                                  "manifest_package",
@@ -5013,6 +5017,7 @@ if (enable_java_templates) {
       not_needed(invoker,
                  [
                    "manifest_package",
+                   "lint_baseline_file",
                    "lint_min_sdk_version",
                  ])
     }

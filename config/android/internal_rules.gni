@@ -1044,14 +1044,13 @@ if (enable_java_templates) {
         args += [ "--warnings-as-errors" ]
       }
 
-      _stamp_path = "$target_out_dir/$target_name/build.lint.stamp"
       if (defined(invoker.create_cache) && invoker.create_cache) {
-        args += [ "--silent" ]
-
         # Putting the stamp file in the cache dir allows us to depend on ninja
         # to create the cache dir for us.
         _stamp_path = "$_cache_dir/build.lint.stamp"
+        args += [ "--silent" ]
       } else {
+        _stamp_path = "$target_out_dir/$target_name/build.lint.stamp"
         deps += [
           "//build/android:prepare_android_lint_cache",
           invoker.build_config_dep,
@@ -1059,17 +1058,6 @@ if (enable_java_templates) {
         inputs += [ invoker.build_config ]
         _rebased_build_config =
             rebase_path(invoker.build_config, root_build_dir)
-
-        # TODO(wnwen): Remove this baseline once it is empty.
-        _baseline = "//build/android/lint/baseline.xml"
-        _rebased_baseline = rebase_path(_baseline, root_build_dir)
-
-        if (compute_inputs_for_analyze) {
-          # The baseline file is included in lint.py as a depfile dep. Since
-          # removing it regenerates the file, it is useful to not have this as
-          # a gn input during local development. Add it only for bots' analyze.
-          inputs += [ _baseline ]
-        }
 
         args += [
           "--manifest-path=@FileArg($_rebased_build_config:deps_info:lint_android_manifest)",
@@ -1081,14 +1069,25 @@ if (enable_java_templates) {
           "--resource-sources=@FileArg($_rebased_build_config:deps_info:lint_resource_sources)",
           "--resource-zips=@FileArg($_rebased_build_config:deps_info:lint_resource_zips)",
 
-          # Baseline allows us to turn on lint warnings without fixing all the
-          # pre-existing issues. This stops the flood of new issues while the
-          # existing ones are being fixed.
-          "--baseline=$_rebased_baseline",
-
           # The full classpath is required for annotation checks like @IntDef.
           "--classpath=@FileArg($_rebased_build_config:deps_info:javac_full_interface_classpath)",
         ]
+
+        if (defined(invoker.lint_baseline_file)) {
+          if (compute_inputs_for_analyze) {
+            # The baseline file is included in lint.py as a depfile dep. Since
+            # removing it regenerates the file, it is useful to not have this as
+            # a gn input during local development. Add it only for bots' analyze.
+            inputs += [ invoker.lint_baseline_file ]
+          }
+          args += [
+            # Baseline allows us to turn on lint warnings without fixing all the
+            # pre-existing issues. This stops the flood of new issues while the
+            # existing ones are being fixed.
+            "--baseline",
+            rebase_path(invoker.lint_baseline_file, root_build_dir),
+          ]
+        }
       }
 
       outputs = [ _stamp_path ]
