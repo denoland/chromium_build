@@ -3333,7 +3333,6 @@ if (enable_java_templates) {
                                  "lint_baseline_file",
                                  "lint_suppressions_dep",
                                  "lint_suppressions_file",
-                                 "manifest_package",
                                  "min_sdk_version",
                                ])
         if (defined(invoker.lint_min_sdk_version)) {
@@ -3344,10 +3343,8 @@ if (enable_java_templates) {
         deps = [ ":$_java_target" ]
       }
     } else {
-      # TODO(wnwen): Remove manifest_package when all usages are removed.
       not_needed(invoker,
                  [
-                   "manifest_package",
                    "lint_baseline_file",
                    "lint_min_sdk_version",
                  ])
@@ -5002,7 +4999,6 @@ if (enable_java_templates) {
                                  "lint_baseline_file",
                                  "lint_suppressions_dep",
                                  "lint_suppressions_file",
-                                 "manifest_package",
                                  "min_sdk_version",
                                ])
         if (defined(invoker.lint_min_sdk_version)) {
@@ -5013,10 +5009,8 @@ if (enable_java_templates) {
         deps = _module_java_targets
       }
     } else {
-      # TODO(wnwen): Remove manifest_package when all usages are removed.
       not_needed(invoker,
                  [
-                   "manifest_package",
                    "lint_baseline_file",
                    "lint_min_sdk_version",
                  ])
