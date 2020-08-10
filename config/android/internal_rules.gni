@@ -2456,12 +2456,11 @@ if (enable_java_templates) {
         rebase_path(invoker.optimized_proto_output, root_build_dir),
       ]
     }
-    if (defined(invoker.resources_config_path)) {
-      _inputs += [ invoker.resources_config_path ]
-      _args += [
-        "--resources-config-path",
-        rebase_path(invoker.resources_config_path, root_build_dir),
-      ]
+    if (defined(invoker.resources_config_paths)) {
+      _inputs += invoker.resources_config_paths
+      _rebased_resource_configs =
+          rebase_path(invoker.resources_config_paths, root_build_dir)
+      _args += [ "--resources-config-paths=${_rebased_resource_configs}" ]
     }
     if (defined(invoker.short_resource_paths) && invoker.short_resource_paths) {
       _args += [ "--short-resource-paths" ]

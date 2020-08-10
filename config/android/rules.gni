@@ -2088,8 +2088,8 @@ if (enable_java_templates) {
   #     resources.arsc file in the apk or module.
   #   short_resource_paths: True if resource paths should be shortened in the
   #     apk or module.
-  #   resources_config_path: Path to the aapt2 optimize config file that tags
-  #     resources with acceptable/non-acceptable optimizations.
+  #   resources_config_paths: List of paths to the aapt2 optimize config files
+  #     that tags resources with acceptable/non-acceptable optimizations.
   #   expected_android_manifest: Enables verification of expected merged
   #     manifest based on a golden file.
   #   resource_ids_provider_dep: If passed, this target will use the resource
@@ -2482,7 +2482,7 @@ if (enable_java_templates) {
                                "resource_exclusion_exceptions",
                                "resource_exclusion_regex",
                                "resource_values_filter_rules",
-                               "resources_config_path",
+                               "resources_config_paths",
                                "shared_resources",
                                "shared_resources_allowlist_locales",
                                "support_zh_hk",
@@ -3483,7 +3483,7 @@ if (enable_java_templates) {
                                "resource_exclusion_regex",
                                "resource_ids_provider_dep",
                                "resource_values_filter_rules",
-                               "resources_config_path",
+                               "resources_config_paths",
                                "require_native_mocks",
                                "secondary_abi_loadable_modules",
                                "secondary_abi_shared_libraries",
@@ -3610,7 +3610,7 @@ if (enable_java_templates) {
                                "resource_exclusion_regex",
                                "resource_ids_provider_dep",
                                "resource_values_filter_rules",
-                               "resources_config_path",
+                               "resources_config_paths",
                                "secondary_abi_loadable_modules",
                                "secondary_abi_shared_libraries",
                                "secondary_native_lib_placeholders",
