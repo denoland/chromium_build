@@ -554,6 +554,18 @@ template("write_build_config") {
           rebase_path(invoker.module_build_configs, root_build_dir)
       args += [ "--module-build-configs=$_rebased_configs" ]
     }
+    if (defined(invoker.version_name)) {
+      args += [
+        "--version-name",
+        invoker.version_name,
+      ]
+    }
+    if (defined(invoker.version_code)) {
+      args += [
+        "--version-code",
+        invoker.version_code,
+      ]
+    }
     if (current_toolchain != default_toolchain) {
       # This has to be a built-time error rather than a GN assert because many
       # packages have a mix of java and non-java targets. For example, the
@@ -3646,6 +3658,8 @@ if (enable_java_templates) {
                                  "is_base_module",
                                  "module_pathmap_path",
                                  "proto_resources_path",
+                                 "version_name",
+                                 "version_code",
                                ])
       }
       chromium_code = _chromium_code

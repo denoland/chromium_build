@@ -2777,6 +2777,11 @@ if (enable_java_templates) {
         type = "android_app_bundle_module"
         res_size_info_path = _res_size_info_path
         is_base_module = _is_base_module
+        forward_variables_from(invoker,
+                               [
+                                 "version_code",
+                                 "version_name",
+                               ])
       } else {
         type = "android_apk"
       }
