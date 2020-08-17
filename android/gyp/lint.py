@@ -234,6 +234,8 @@ def _RunLint(lint_binary_path,
   # It is important that lint uses the checked-in JDK11 as it is almost 50%
   # faster than JDK8.
   env['JAVA_HOME'] = build_utils.JAVA_HOME
+  # This is necessary so that lint errors print stack traces in stdout.
+  env['LINT_PRINT_STACKTRACE'] = 'true'
   # This filter is necessary for JDK11.
   stderr_filter = build_utils.FilterReflectiveAccessJavaWarnings
 
