@@ -1626,6 +1626,15 @@ if (enable_java_templates) {
         outputs = [ invoker.output ]
         inputs = [ _r8_path ]
 
+        if (!_is_library) {
+          # http://crbug.com/725224. Fix for bots running out of memory.
+          if (defined(java_cmd_pool_size)) {
+            pool = "//build/config/android:java_cmd_pool($default_toolchain)"
+          } else {
+            pool = "//build/toolchain:link_pool($default_toolchain)"
+          }
+        }
+
         args = [
           "--depfile",
           rebase_path(depfile, root_build_dir),
