@@ -53,7 +53,9 @@ def DexJdkLibJar(r8_path, min_api, desugar_jdk_libs_json, desugar_jdk_libs_jar,
         desugar_jdk_libs_json,
     ]
 
-    if keep_rule_file:
+    # If no desugaring is required, no keep rules are generated, and the keep
+    # file will not be created.
+    if keep_rule_file is not None and os.path.exists(keep_rule_file):
       cmd += ['--pg-conf', keep_rule_file]
 
     cmd += [
