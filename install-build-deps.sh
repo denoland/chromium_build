@@ -225,6 +225,15 @@ dev_list="\
 # 64-bit systems need a minimum set of 32-bit compat packages for the pre-built
 # NaCl binaries.
 if file -L /sbin/init | grep -q 'ELF 64-bit'; then
+  dev_list="${dev_list} libc6-i386 lib32stdc++6"
+
+  # lib32gcc-s1 used to be called lib32gcc1 in older distros.
+  if package_exists lib32gcc-s1; then
+    dev_list="${dev_list} lib32gcc-s1"
+  elif package_exists lib32gcc1; then
+    dev_list="${dev_list} lib32gcc1"
+  fi
+
   dev_list="${dev_list} libc6-i386 lib32gcc-s1 lib32stdc++6"
 fi
 
