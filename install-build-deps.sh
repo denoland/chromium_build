@@ -52,8 +52,8 @@ package_exists() {
     echo "Call build_apt_package_list() prior to calling package_exists()" >&2
     apt_package_list=$(build_apt_package_list)
   fi
-  # 'apt-cache search' takes a regex string, so eg. the +'s in packages like
-  # "libstdc++" need to be escaped.
+  # `grep` takes a regex string, so the +'s in package names, e.g. "libstdc++",
+  # need to be escaped.
   local escaped="$(echo $1 | sed 's/[\~\+\.\:-]/\\&/g')"
   [ ! -z "$(grep "^${escaped}$" <<< "${apt_package_list}")" ]
 }
