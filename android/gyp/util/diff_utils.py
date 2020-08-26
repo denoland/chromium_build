@@ -19,7 +19,7 @@ def _SkipOmitted(line):
   a line that changes from build to build because - for instance - it contains
   version information.
   """
-  if line.endswith('# OMIT FROM EXPECTATIONS\n'):
+  if line.rstrip().endswith('# OMIT FROM EXPECTATIONS'):
     return '# THIS LINE WAS OMITTED\n'
   return line
 
@@ -27,10 +27,14 @@ def _SkipOmitted(line):
 def _GenerateDiffWithOnlyAdditons(expected_path, actual_data):
   """Generate a diff that only contains additions"""
   # Ignore blank lines when creating the diff to cut down on whitespace-only
-  # lines in the diff.
+  # lines in the diff. Also remove trailing whitespaces and add the new lines
+  # manually (ndiff expects new lines but we don't care about trailing
+  # whitespace).
   with open(expected_path) as expected:
     expected_lines = [l for l in expected.readlines() if l.strip()]
-  actual_lines = [l for l in actual_data.splitlines(True) if l.strip()]
+  actual_lines = [
+      '{}\n'.format(l.rstrip()) for l in actual_data.splitlines() if l.strip()
+  ]
 
   diff = difflib.ndiff(expected_lines, actual_lines)
   filtered_diff = (l for l in diff if l.startswith('+'))
@@ -39,9 +43,12 @@ def _GenerateDiffWithOnlyAdditons(expected_path, actual_data):
 
 def _DiffFileContents(expected_path, actual_data):
   """Check file contents for equality and return the diff or None."""
+  # Remove all trailing whitespace and add it explicitly in the end.
   with open(expected_path) as f_expected:
-    expected_lines = f_expected.readlines()
-  actual_lines = [_SkipOmitted(line) for line in actual_data.splitlines(True)]
+    expected_lines = [l.rstrip() for l in f_expected.readlines()]
+  actual_lines = [
+      _SkipOmitted(line).rstrip() for line in actual_data.splitlines()
+  ]
 
   if expected_lines == actual_lines:
     return None
@@ -53,9 +60,11 @@ def _DiffFileContents(expected_path, actual_data):
       actual_lines,
       fromfile=os.path.join('before', expected_path),
       tofile=os.path.join('after', expected_path),
-      n=0)
+      n=0,
+      lineterm='',
+  )
 
-  return ''.join(diff).rstrip()
+  return '\n'.join(diff)
 
 
 def AddCommandLineFlags(parser):
@@ -88,11 +97,11 @@ def CheckExpectations(actual_data, options):
   diff_text = _DiffFileContents(options.expected_file, actual_data)
 
   if not diff_text:
-    return
-
-  fail_msg = """
+    fail_msg = ''
+  else:
+    fail_msg = """
 Expectations need updating:
-https://chromium.googlesource.com/chromium/src/+/HEAD/chrome/android/expecations/README.md
+https://chromium.googlesource.com/chromium/src/+/HEAD/chrome/android/expectations/README.md
 
 LogDog tip: Use "Raw log" or "Switch to lite mode" before copying:
 https://bugs.chromium.org/p/chromium/issues/detail?id=984616
@@ -105,10 +114,10 @@ END_DIFF
 ############ END ############
 """.format(diff_text)
 
-  sys.stderr.write(fail_msg)
+    sys.stderr.write(fail_msg)
+
   if options.failure_file:
-    build_utils.MakeDirectory(os.path.dirname(options.failure_file))
     with open(options.failure_file, 'w') as f:
       f.write(fail_msg)
-  if options.fail_on_expectations:
+  if fail_msg and options.fail_on_expectations:
     sys.exit(1)

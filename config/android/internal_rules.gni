@@ -16,6 +16,9 @@ import("//build/toolchain/goma.gni")
 import("//build/toolchain/kythe.gni")
 import("//build/util/generate_wrapper.gni")
 import("//build_overrides/build.gni")
+if (current_toolchain == default_toolchain) {
+  import("//build/toolchain/concurrent_links.gni")
+}
 assert(is_android)
 
 # The following _java_*_types variables capture all the existing target types.
@@ -79,8 +82,12 @@ _java_target_patterns = _java_library_patterns + _java_resource_patterns
 
 _r8_path = "//third_party/r8/lib/r8.jar"
 _desugar_jdk_libs_json = "//third_party/r8/desugar_jdk_libs.json"
-_desugar_jdk_libs_jar = "//third_party/android_deps/libs/com_android_tools_desugar_jdk_libs/desugar_jdk_libs-1.0.5.jar"
+_desugar_jdk_libs_jar = "//third_party/android_deps/libs/com_android_tools_desugar_jdk_libs/desugar_jdk_libs-1.0.10.jar"
+_desugar_jdk_libs_configuration_jar = "//third_party/android_deps/libs/com_android_tools_desugar_jdk_libs_configuration/desugar_jdk_libs_configuration-1.0.10.jar"
 _desugar_runtime_jar = "$root_build_dir/obj/third_party/bazel/desugar/Desugar_runtime.processed.jar"
+
+# Where to write failed expectations for bots to read.
+_expectations_failure_dir = "$root_build_dir/failed_expectations"
 
 _dexdump_path = "$android_sdk_build_tools/dexdump"
 _dexlayout_path = "//third_party/android_build_tools/art/dexlayout"
@@ -551,6 +558,18 @@ template("write_build_config") {
           rebase_path(invoker.module_build_configs, root_build_dir)
       args += [ "--module-build-configs=$_rebased_configs" ]
     }
+    if (defined(invoker.version_name)) {
+      args += [
+        "--version-name",
+        invoker.version_name,
+      ]
+    }
+    if (defined(invoker.version_code)) {
+      args += [
+        "--version-code",
+        invoker.version_code,
+      ]
+    }
     if (current_toolchain != default_toolchain) {
       # This has to be a built-time error rather than a GN assert because many
       # packages have a mix of java and non-java targets. For example, the
@@ -954,7 +973,11 @@ if (enable_java_templates) {
       }
 
       # https://crbug.com/1098752 Fix for bot OOM (https://crbug.com/1098333).
-      pool = "//build/toolchain:link_pool($default_toolchain)"
+      if (defined(java_cmd_pool_size)) {
+        pool = "//build/config/android:java_cmd_pool($default_toolchain)"
+      } else {
+        pool = "//build/toolchain:link_pool($default_toolchain)"
+      }
 
       # Lint only requires generated sources and generated resources from the
       # build. Since turbine __header targets already depend on and generate all
@@ -983,18 +1006,6 @@ if (enable_java_templates) {
         }
       }
 
-      if (defined(invoker.lint_suppressions_file)) {
-        _suppressions_file = invoker.lint_suppressions_file
-
-        # The custom suppressions file might be a generated file needing a dep.
-        # e.g. generating it by appending to the default suppressions.xml file.
-        if (defined(invoker.lint_suppressions_dep)) {
-          deps += [ invoker.lint_suppressions_dep ]
-        }
-      } else {
-        _suppressions_file = "//build/android/lint/suppressions.xml"
-      }
-
       if (defined(invoker.min_sdk_version)) {
         _min_sdk_version = invoker.min_sdk_version
       } else {
@@ -1009,10 +1020,7 @@ if (enable_java_templates) {
 
       script = "//build/android/gyp/lint.py"
       depfile = "$target_gen_dir/$target_name.d"
-      inputs = [
-        _lint_binary_path,
-        _suppressions_file,
-      ]
+      inputs = [ _lint_binary_path ]
 
       args = [
         "--depfile",
@@ -1021,8 +1029,6 @@ if (enable_java_templates) {
         rebase_path(_lint_binary_path, root_build_dir),
         "--cache-dir",
         rebase_path(_cache_dir, root_build_dir),
-        "--config-path",
-        rebase_path(_suppressions_file, root_build_dir),
         "--lint-gen-dir",
         rebase_path(_lint_gen_dir, root_build_dir),
         "--android-sdk-version=${lint_android_sdk_version}",
@@ -1030,6 +1036,15 @@ if (enable_java_templates) {
         "--android-sdk-root",
         rebase_path(lint_android_sdk_root, root_build_dir),
       ]
+
+      if (defined(invoker.lint_suppressions_file)) {
+        inputs += [ invoker.lint_suppressions_file ]
+
+        args += [
+          "--config-path",
+          rebase_path(invoker.lint_suppressions_file, root_build_dir),
+        ]
+      }
 
       if (defined(testonly) && testonly) {
         # Allows us to ignore unnecessary checks when linting test targets.
@@ -1044,14 +1059,28 @@ if (enable_java_templates) {
         args += [ "--warnings-as-errors" ]
       }
 
-      _stamp_path = "$target_out_dir/$target_name/build.lint.stamp"
-      if (defined(invoker.create_cache) && invoker.create_cache) {
-        args += [ "--silent" ]
+      if (defined(invoker.lint_baseline_file)) {
+        if (compute_inputs_for_analyze) {
+          # The baseline file is included in lint.py as a depfile dep. Since
+          # removing it regenerates the file, it is useful to not have this as
+          # a gn input during local development. Add it only for bots' analyze.
+          inputs += [ invoker.lint_baseline_file ]
+        }
+        args += [
+          # Baseline allows us to turn on lint warnings without fixing all the
+          # pre-existing issues. This stops the flood of new issues while the
+          # existing ones are being fixed.
+          "--baseline",
+          rebase_path(invoker.lint_baseline_file, root_build_dir),
+        ]
+      }
 
+      if (defined(invoker.create_cache) && invoker.create_cache) {
         # Putting the stamp file in the cache dir allows us to depend on ninja
         # to create the cache dir for us.
         _stamp_path = "$_cache_dir/build.lint.stamp"
       } else {
+        _stamp_path = "$target_out_dir/$target_name/build.lint.stamp"
         deps += [
           "//build/android:prepare_android_lint_cache",
           invoker.build_config_dep,
@@ -1059,17 +1088,6 @@ if (enable_java_templates) {
         inputs += [ invoker.build_config ]
         _rebased_build_config =
             rebase_path(invoker.build_config, root_build_dir)
-
-        # TODO(wnwen): Remove this baseline once it is empty.
-        _baseline = "//build/android/lint/baseline.xml"
-        _rebased_baseline = rebase_path(_baseline, root_build_dir)
-
-        if (compute_inputs_for_analyze) {
-          # The baseline file is included in lint.py as a depfile dep. Since
-          # removing it regenerates the file, it is useful to not have this as
-          # a gn input during local development. Add it only for bots' analyze.
-          inputs += [ _baseline ]
-        }
 
         args += [
           "--manifest-path=@FileArg($_rebased_build_config:deps_info:lint_android_manifest)",
@@ -1080,11 +1098,6 @@ if (enable_java_templates) {
           "--srcjars=@FileArg($_rebased_build_config:deps_info:lint_srcjars)",
           "--resource-sources=@FileArg($_rebased_build_config:deps_info:lint_resource_sources)",
           "--resource-zips=@FileArg($_rebased_build_config:deps_info:lint_resource_zips)",
-
-          # Baseline allows us to turn on lint warnings without fixing all the
-          # pre-existing issues. This stops the flood of new issues while the
-          # existing ones are being fixed.
-          "--baseline=$_rebased_baseline",
 
           # The full classpath is required for annotation checks like @IntDef.
           "--classpath=@FileArg($_rebased_build_config:deps_info:javac_full_interface_classpath)",
@@ -1110,9 +1123,6 @@ if (enable_java_templates) {
                            ])
     _script = "//build/android/gyp/proguard.py"
     _deps = invoker.deps
-
-    # http://crbug.com/725224. Fix for bots running out of memory.
-    _pool = "//build/toolchain:link_pool($default_toolchain)"
 
     _inputs = [
       invoker.build_config,
@@ -1221,8 +1231,13 @@ if (enable_java_templates) {
       _args += [
         "--desugar-jdk-libs-jar",
         rebase_path(_desugar_jdk_libs_jar, root_build_dir),
+        "--desugar-jdk-libs-configuration-jar",
+        rebase_path(_desugar_jdk_libs_configuration_jar, root_build_dir),
       ]
-      _inputs += [ _desugar_jdk_libs_jar ]
+      _inputs += [
+        _desugar_jdk_libs_jar,
+        _desugar_jdk_libs_configuration_jar,
+      ]
 
       _desugared_library_keep_rule_output_path =
           "$target_gen_dir/$target_name.desugared_library_keep_rules.flags"
@@ -1262,9 +1277,12 @@ if (enable_java_templates) {
         ]
         _actual_file = "$target_gen_dir/$target_name.proguard_configs"
         _failure_file =
-            "$android_configuration_failure_dir/" +
+            "$_expectations_failure_dir/" +
             string_replace(invoker.expected_proguard_config, "/", "_")
-        outputs = [ _actual_file ]
+        outputs = [
+          _actual_file,
+          _failure_file,
+        ]
         args = _args + [
                  "--depfile",
                  rebase_path(depfile, root_build_dir),
@@ -1292,7 +1310,6 @@ if (enable_java_templates) {
     action_with_pydeps(target_name) {
       script = _script
       deps = _deps
-      pool = _pool
       inputs = _inputs
       outputs = _outputs
       depfile = "${target_gen_dir}/${target_name}.d"
@@ -1300,6 +1317,13 @@ if (enable_java_templates) {
                "--depfile",
                rebase_path(depfile, root_build_dir),
              ]
+
+      # http://crbug.com/725224. Fix for bots running out of memory.
+      if (defined(java_cmd_pool_size)) {
+        pool = "//build/config/android:java_cmd_pool($default_toolchain)"
+      } else {
+        pool = "//build/toolchain:link_pool($default_toolchain)"
+      }
     }
   }
 
@@ -1343,8 +1367,10 @@ if (enable_java_templates) {
           "--classpath",
           rebase_path("//third_party/jacoco/lib/jacocoagent.jar",
                       root_build_dir),
-          "--noverify",
         ]
+      }
+      if (use_jacoco_coverage || !treat_warnings_as_errors) {
+        args += [ "--noverify" ]
       }
       if (defined(invoker.wrapper_script_args)) {
         args += [ "--" ] + invoker.wrapper_script_args
@@ -1524,7 +1550,11 @@ if (enable_java_templates) {
           deps = _deps
 
           # http://crbug.com/725224. Fix for bots running out of memory.
-          pool = "//build/toolchain:link_pool($default_toolchain)"
+          if (defined(java_cmd_pool_size)) {
+            pool = "//build/config/android:java_cmd_pool($default_toolchain)"
+          } else {
+            pool = "//build/toolchain:link_pool($default_toolchain)"
+          }
 
           _shrinked_android = "$android_sdk_build_tools/lib/shrinkedAndroid.jar"
           _dx = "$android_sdk_build_tools/lib/dx.jar"
@@ -1580,6 +1610,9 @@ if (enable_java_templates) {
           if (_input_class_jars != []) {
             args += [ "--class-inputs=${_rebased_input_class_jars}" ]
           }
+          if (treat_warnings_as_errors) {
+            args += [ "--warnings-as-errors" ]
+          }
         }
       }
 
@@ -1596,6 +1629,15 @@ if (enable_java_templates) {
         depfile = "$target_gen_dir/$target_name.d"
         outputs = [ invoker.output ]
         inputs = [ _r8_path ]
+
+        if (!_is_library) {
+          # http://crbug.com/725224. Fix for bots running out of memory.
+          if (defined(java_cmd_pool_size)) {
+            pool = "//build/config/android:java_cmd_pool($default_toolchain)"
+          } else {
+            pool = "//build/toolchain:link_pool($default_toolchain)"
+          }
+        }
 
         args = [
           "--depfile",
@@ -1725,6 +1767,7 @@ if (enable_java_templates) {
         _r8_path,
         _desugar_jdk_libs_json,
         _desugar_jdk_libs_jar,
+        _desugar_jdk_libs_configuration_jar,
       ]
       outputs = [ invoker.output ]
       args = [
@@ -1734,6 +1777,8 @@ if (enable_java_templates) {
         rebase_path(_desugar_jdk_libs_json, root_build_dir),
         "--desugar-jdk-libs-jar",
         rebase_path(_desugar_jdk_libs_jar, root_build_dir),
+        "--desugar-jdk-libs-configuration-jar",
+        rebase_path(_desugar_jdk_libs_configuration_jar, root_build_dir),
         "--output",
         rebase_path(invoker.output, root_build_dir),
         "--min-api=${invoker.min_sdk_version}",
@@ -1956,6 +2001,9 @@ if (enable_java_templates) {
             "--depfile",
             rebase_path(depfile, root_build_dir),
           ]
+          if (treat_warnings_as_errors) {
+            args += [ "--warnings-as-errors" ]
+          }
         }
 
         _deps = []
@@ -2096,6 +2144,10 @@ if (enable_java_templates) {
 
       if (defined(invoker.max_sdk_version)) {
         args += [ "--max-sdk-version=${invoker.max_sdk_version}" ]
+      }
+
+      if (treat_warnings_as_errors) {
+        args += [ "--warnings-as-errors" ]
       }
     }
   }
@@ -2457,12 +2509,11 @@ if (enable_java_templates) {
         rebase_path(invoker.optimized_proto_output, root_build_dir),
       ]
     }
-    if (defined(invoker.resources_config_path)) {
-      _inputs += [ invoker.resources_config_path ]
-      _args += [
-        "--resources-config-path",
-        rebase_path(invoker.resources_config_path, root_build_dir),
-      ]
+    if (defined(invoker.resources_config_paths)) {
+      _inputs += invoker.resources_config_paths
+      _rebased_resource_configs =
+          rebase_path(invoker.resources_config_paths, root_build_dir)
+      _args += [ "--resources-config-paths=${_rebased_resource_configs}" ]
     }
     if (defined(invoker.short_resource_paths) && invoker.short_resource_paths) {
       _args += [ "--short-resource-paths" ]
@@ -2641,14 +2692,17 @@ if (enable_java_templates) {
       action_with_pydeps(_expectations_target) {
         _actual_file = "${invoker.android_manifest}.normalized"
         _failure_file =
-            "$android_configuration_failure_dir/" +
+            "$_expectations_failure_dir/" +
             string_replace(invoker.expected_android_manifest, "/", "_")
         inputs = [
           invoker.android_manifest,
           invoker.build_config,
           invoker.expected_android_manifest,
         ]
-        outputs = [ _actual_file ]
+        outputs = [
+          _actual_file,
+          _failure_file,
+        ]
         deps = [
           invoker.android_manifest_dep,
           invoker.build_config_dep,
@@ -2913,6 +2967,9 @@ if (enable_java_templates) {
     if (_secondary_native_lib_placeholders != []) {
       _args += [ "--secondary-native-lib-placeholders=$_secondary_native_lib_placeholders" ]
     }
+    if (treat_warnings_as_errors) {
+      _args += [ "--warnings-as-errors" ]
+    }
 
     if (defined(invoker.expected_libs_and_assets)) {
       _expectations_target =
@@ -2920,14 +2977,17 @@ if (enable_java_templates) {
       action_with_pydeps(_expectations_target) {
         _actual_file = "$target_gen_dir/$target_name.libs_and_assets"
         _failure_file =
-            "$android_configuration_failure_dir/" +
+            "$_expectations_failure_dir/" +
             string_replace(invoker.expected_libs_and_assets, "/", "_")
         inputs = [
           invoker.build_config,
           invoker.expected_libs_and_assets,
         ]
         deps = [ invoker.build_config_dep ]
-        outputs = [ _actual_file ]
+        outputs = [
+          _actual_file,
+          _failure_file,
+        ]
         script = _script
         args = _args + [
                  "--expected-file",
@@ -3644,6 +3704,8 @@ if (enable_java_templates) {
                                  "is_base_module",
                                  "module_pathmap_path",
                                  "proto_resources_path",
+                                 "version_name",
+                                 "version_code",
                                ])
       }
       chromium_code = _chromium_code
@@ -4136,11 +4198,15 @@ template("create_android_app_bundle_module") {
     ]
   }
 
+  if (treat_warnings_as_errors) {
+    _args += [ "--warnings-as-errors" ]
+  }
+
   if (defined(invoker.expected_libs_and_assets)) {
     _expectations_target = "${invoker.top_target_name}_validate_libs_and_assets"
     action_with_pydeps(_expectations_target) {
       _actual_file = "$target_gen_dir/$target_name.libs_and_assets"
-      _failure_file = "$android_configuration_failure_dir/" +
+      _failure_file = "$_expectations_failure_dir/" +
                       string_replace(invoker.expected_libs_and_assets, "/", "_")
       inputs = [
         invoker.expected_libs_and_assets,
@@ -4155,7 +4221,10 @@ template("create_android_app_bundle_module") {
         inputs += [ invoker.secondary_abi_native_libraries_config ]
         deps += [ invoker.secondary_abi_native_libraries_config_target ]
       }
-      outputs = [ _actual_file ]
+      outputs = [
+        _actual_file,
+        _failure_file,
+      ]
       script = _script
       args = _args + [
                "--expected-file",

@@ -4,7 +4,9 @@
 
 """Contains common helpers for working with Android manifests."""
 
+import hashlib
 import os
+import re
 import shlex
 import xml.dom.minidom as minidom
 
@@ -120,12 +122,39 @@ def AssertPackage(manifest_node, package):
                                                               package))
 
 
-def _SortAndStripElementTree(tree, reverse_toplevel=False):
-  for node in tree:
-    if node.text and node.text.isspace():
-      node.text = None
-    _SortAndStripElementTree(node)
-  tree[:] = sorted(tree, key=ElementTree.tostring, reverse=reverse_toplevel)
+def _SortAndStripElementTree(root):
+  def sort_key(node):
+    ret = ElementTree.tostring(node)
+    # ElementTree.tostring inserts namespace attributes for any that are needed
+    # for the node or any of its descendants. Remove them so as to prevent a
+    # change to a child that adds/removes a namespace usage from changing sort
+    # order.
+    return re.sub(r' xmlns:.*?".*?"', '', ret)
+
+  def helper(node):
+    for child in node:
+      if child.text and child.text.isspace():
+        child.text = None
+      helper(child)
+    node[:] = sorted(node, key=sort_key)
+
+  def rename_attrs(node, from_name, to_name):
+    value = node.attrib.get(from_name)
+    if value is not None:
+      node.attrib[to_name] = value
+      del node.attrib[from_name]
+    for child in node:
+      rename_attrs(child, from_name, to_name)
+
+  # Sort alphabetically with two exceptions:
+  # 1) Put <application> node last (since it's giant).
+  # 2) Pretend android:name appears before other attributes.
+  app_node = root.find('application')
+  app_node.tag = 'zz'
+  rename_attrs(root, '{%s}name' % ANDROID_NAMESPACE, '__name__')
+  helper(root)
+  rename_attrs(root, '__name__', '{%s}name' % ANDROID_NAMESPACE)
+  app_node.tag = 'application'
 
 
 def _SplitElement(line):
@@ -151,7 +180,7 @@ def _SplitElement(line):
 
 
 def _CreateNodeHash(lines):
-  """Computes a hash for the first XML node found in |lines|.
+  """Computes a hash (md5) for the first XML node found in |lines|.
 
   Args:
     lines: List of strings containing pretty-printed XML.
@@ -160,12 +189,23 @@ def _CreateNodeHash(lines):
     Positive 32-bit integer hash of the node (including children).
   """
   target_indent = lines[0].find('<')
+  tag_closed = False
   for i, l in enumerate(lines[1:]):
     cur_indent = l.find('<')
     if cur_indent != -1 and cur_indent <= target_indent:
       tag_lines = lines[:i + 1]
-      return hash(tuple(tag_lines)) % 0x100000000  # Make 32-bit non-negative.
-  assert False, 'Did not find end of node:\n' + '\n'.join(lines)
+      break
+    elif not tag_closed and 'android:name="' in l:
+      # To reduce noise of node tags changing, use android:name as the
+      # basis the hash since they usually unique.
+      tag_lines = [l]
+      break
+    tag_closed = tag_closed or '>' in l
+  else:
+    assert False, 'Did not find end of node:\n' + '\n'.join(lines)
+
+  # Insecure and truncated hash as it only needs to be unique vs. its neighbors.
+  return hashlib.md5('\n'.join(tag_lines)).hexdigest()[:8]
 
 
 def _IsSelfClosing(lines):
@@ -190,23 +230,32 @@ def _AddDiffTags(lines):
   hash_stack = []
   for i, l in enumerate(lines):
     stripped = l.lstrip()
-    # If it's an indented tag that is not self-closing (unless wrapped):
-    if l[0] == ' ' and stripped[0] == '<' and l[-2:] != '/>':
-      if stripped[1] != '/':
-        cur_hash = _CreateNodeHash(lines[i:])
-        if not _IsSelfClosing(lines[i:]):
-          hash_stack.append(cur_hash)
-      else:
-        cur_hash = hash_stack.pop()
-      lines[i] += '  # DIFF-ANCHOR: {:x}'.format(cur_hash)
+    # Ignore non-indented tags and lines that are not the start/end of a node.
+    if l[0] != ' ' or stripped[0] != '<':
+      continue
+    # Ignore self-closing nodes that fit on one line.
+    if l[-2:] == '/>':
+      continue
+    # Ignore <application> since diff tag changes with basically any change.
+    if stripped.lstrip('</').startswith('application'):
+      continue
+
+    # Check for the closing tag (</foo>).
+    if stripped[1] != '/':
+      cur_hash = _CreateNodeHash(lines[i:])
+      if not _IsSelfClosing(lines[i:]):
+        hash_stack.append(cur_hash)
+    else:
+      cur_hash = hash_stack.pop()
+    lines[i] += '  # DIFF-ANCHOR: {}'.format(cur_hash)
   assert not hash_stack, 'hash_stack was not empty:\n' + '\n'.join(hash_stack)
 
 
-def NormalizeManifest(path):
-  with open(path) as f:
-    # This also strips comments and sorts node attributes alphabetically.
-    root = ElementTree.fromstring(f.read())
-    package = GetPackage(root)
+def NormalizeManifest(manifest_contents):
+  _RegisterElementTreeNamespaces()
+  # This also strips comments and sorts node attributes alphabetically.
+  root = ElementTree.fromstring(manifest_contents)
+  package = GetPackage(root)
 
   # Trichrome's static library version number is updated daily. To avoid
   # frequent manifest check failures, we remove the exact version number
@@ -235,23 +284,29 @@ def NormalizeManifest(path):
   for child in root.getchildren():
     blur_package_name(child)
 
-  # Sort nodes alphabetically, recursively.
-  _SortAndStripElementTree(root, reverse_toplevel=True)
+  _SortAndStripElementTree(root)
 
   # Fix up whitespace/indentation.
   dom = minidom.parseString(ElementTree.tostring(root))
   out_lines = []
   for l in dom.toprettyxml(indent='  ').splitlines():
-    if l.strip():
-      if len(l) > _WRAP_LINE_LENGTH and any(x in l for x in _WRAP_CANDIDATES):
-        indent = ' ' * l.find('<')
-        start_tag, attrs, end_tag = _SplitElement(l)
-        out_lines.append('{}{}'.format(indent, start_tag))
-        for attribute in attrs:
-          out_lines.append('{}    {}'.format(indent, attribute))
-        out_lines[-1] += end_tag
-      else:
-        out_lines.append(l)
+    if not l or l.isspace():
+      continue
+    if len(l) > _WRAP_LINE_LENGTH and any(x in l for x in _WRAP_CANDIDATES):
+      indent = ' ' * l.find('<')
+      start_tag, attrs, end_tag = _SplitElement(l)
+      out_lines.append('{}{}'.format(indent, start_tag))
+      for attribute in attrs:
+        out_lines.append('{}    {}'.format(indent, attribute))
+      out_lines[-1] += '>'
+      # Heuristic: Do not allow multi-line tags to be self-closing since these
+      # can generally be allowed to have nested elements. When diffing, it adds
+      # noise if the base file is self-closing and the non-base file is not
+      # self-closing.
+      if end_tag == '/>':
+        out_lines.append('{}{}>'.format(indent, start_tag.replace('<', '</')))
+    else:
+      out_lines.append(l)
 
   # Make output more diff-friendly.
   _AddDiffTags(out_lines)

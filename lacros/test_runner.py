@@ -34,6 +34,11 @@
   useful to reproduce test failures, the version corresponds to the commit
   position of commits on the master branch, and a list of prebuilt versions can
   be found at: gs://ash-chromium-on-linux-prebuilts/x86_64.
+
+  ./testing/xvfb.py ./build/lacros/test_runner.py test out/lacros/browser_tests
+
+  The above command starts ash-chrome with xvfb instead of an X11 window, and
+  it's useful when running tests without a display attached, such as sshing.
 """
 
 import argparse
@@ -54,6 +59,9 @@ sys.path.append(os.path.join(_SRC_ROOT, 'third_party', 'depot_tools'))
 
 # Base GS URL to store prebuilt ash-chrome.
 _GS_URL_BASE = 'gs://ash-chromium-on-linux-prebuilts/x86_64'
+
+# Latest file version.
+_GS_URL_LATEST_FILE = _GS_URL_BASE + '/latest/ash-chromium.txt'
 
 # GS path to the zipped ash-chrome build with any given version.
 _GS_ASH_CHROME_PATH = 'ash-chromium.zip'
@@ -81,6 +89,7 @@ _TARGETS_REQUIRE_ASH_CHROME = [
 
     # regex patters.
     '.*_browsertests',
+    '.*interactive_ui_tests'
 ]
 
 def _GetAshChromeDirPath(version):
@@ -197,12 +206,10 @@ def _GetLatestVersionOfAshChrome():
   gsutil = download_from_google_storage.Gsutil(
       download_from_google_storage.GSUTIL_DEFAULT_PATH)
 
-  # gsutil.check_call returns (code, out, err), and each path in the output is
-  # of format: gs://ash-chromium-on-linux-prebuilts/x86_64/{cr-commit-position}
-  _, output, _ = gsutil.check_call('ls', _GS_URL_BASE)
-  latest_gs_path = sorted(output.splitlines())[-1]
-  return latest_gs_path.rstrip('/').split('/')[-1]
-
+  with tempfile.NamedTemporaryFile() as tmp:
+    gsutil.check_call('cp', _GS_URL_LATEST_FILE, tmp.name)
+    with open(tmp.name, 'r') as f:
+      return f.read().strip()
 
 def _RunTestWithAshChrome(args, forward_args):
   """Runs tests with ash-chrome.
