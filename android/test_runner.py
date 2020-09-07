@@ -40,6 +40,7 @@ from pylib.base import base_test_result
 from pylib.base import environment_factory
 from pylib.base import output_manager
 from pylib.base import output_manager_factory
+from pylib.base import result_sink
 from pylib.base import test_instance_factory
 from pylib.base import test_run_factory
 from pylib.results import json_results
@@ -218,6 +219,7 @@ def AddCommonOptions(parser):
       '--isolated-script-test-repeat',
       dest='repeat', type=int, default=0,
       help='Number of times to repeat the specified set of tests.')
+
   # This is currently only implemented for gtests and instrumentation tests.
   parser.add_argument(
       '--gtest_also_run_disabled_tests', '--gtest-also-run-disabled-tests',
@@ -255,10 +257,14 @@ def AddDeviceOptions(parser):
       type=os.path.realpath,
       help='Specify the absolute path of the adb binary that '
            'should be used.')
-  parser.add_argument(
-      '--blacklist-file',
-      type=os.path.realpath,
-      help='Device blacklist file.')
+  # TODO(crbug.com/1097306): Remove this once callers have all switched to
+  # --denylist-file.
+  parser.add_argument('--blacklist-file',
+                      dest='denylist_file',
+                      help=argparse.SUPPRESS)
+  parser.add_argument('--denylist-file',
+                      type=os.path.realpath,
+                      help='Device denylist file.')
   parser.add_argument(
       '-d', '--device', nargs='+',
       dest='test_devices',
@@ -733,11 +739,12 @@ _DEFAULT_PLATFORM_MODE_TESTS = [
 ]
 
 
-def RunTestsCommand(args):
+def RunTestsCommand(args, result_sink_client=None):
   """Checks test type and dispatches to the appropriate function.
 
   Args:
     args: argparse.Namespace object.
+    result_sink_client: A ResultSinkClient object.
 
   Returns:
     Integer indicated exit code.
@@ -751,7 +758,7 @@ def RunTestsCommand(args):
   ProcessCommonOptions(args)
   logging.info('command: %s', ' '.join(sys.argv))
   if args.enable_platform_mode or command in _DEFAULT_PLATFORM_MODE_TESTS:
-    return RunTestsInPlatformMode(args)
+    return RunTestsInPlatformMode(args, result_sink_client)
 
   if command == 'python':
     return _RunPythonTests(args)
@@ -769,7 +776,7 @@ _SUPPORTED_IN_PLATFORM_MODE = [
 ]
 
 
-def RunTestsInPlatformMode(args):
+def RunTestsInPlatformMode(args, result_sink_client=None):
 
   def infra_error(message):
     logging.fatal(message)
@@ -907,6 +914,9 @@ def RunTestsInPlatformMode(args):
 
         iteration_count += 1
         for r in iteration_results.GetAll():
+          if result_sink_client:
+            result_sink_client.Post(r.GetName(), r.GetType(), r.GetLog())
+
           result_counts[r.GetName()][r.GetType()] += 1
         report_results.LogFull(
             results=iteration_results,
@@ -1064,8 +1074,11 @@ def main():
       args.wait_for_java_debugger)):
     args.num_retries = 0
 
+  # Result-sink may not exist in the environment if rdb stream is not enabled.
+  result_sink_client = result_sink.TryInitClient()
+
   try:
-    return RunTestsCommand(args)
+    return RunTestsCommand(args, result_sink_client)
   except base_error.BaseError as e:
     logging.exception('Error occurred.')
     if e.is_infra_error:
