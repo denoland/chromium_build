@@ -122,16 +122,6 @@ def main():
   # https://crbug.com/954311 tracks finding a better way to plumb these.
   link_only = InterceptFlag('--link-only', args.command)
   collect_inputs_only = InterceptFlag('--collect-inputs-only', args.command)
-  generate_dwp = InterceptFlag('--generate-dwp', args.command)
-
-  # First, run the actual link.
-  command = wrapper_utils.CommandToRun(args.command)
-  result = wrapper_utils.RunLinkWithOptionalMapFile(command,
-                                                    env=fast_env,
-                                                    map_file=args.map_file)
-
-  if result != 0:
-    return result
 
   # If only linking, we are likely generating a partitioned .so that will be
   # split apart later. In that case:
@@ -149,6 +139,8 @@ def main():
   if link_only or collect_inputs_only:
     open(args.output, 'w').close()
     open(args.tocfile, 'w').close()
+    if args.dwp:
+      open(args.sofile + '.dwp', 'w').close()
 
   # Instead of linking, records all inputs to a file. This is used by
   # enable_resource_allowlist_generation in order to avoid needing to
@@ -171,12 +163,14 @@ def main():
 
   # If dwp is set, then package debug info for this SO.
   dwp_proc = None
-  if generate_dwp:
-    if not args.dwp:
-      parser.error('--generate-dwp requireds --dwp')
-    dwp_proc = subprocess.Popen(
-        wrapper_utils.CommandToRun(
-            [args.dwp, '-e', args.sofile, '-o', args.output + '.dwp']))
+  if args.dwp:
+    # Suppress output here because it doesn't seem to be useful. The most
+    # common error is a segfault, which will happen if files are missing.
+    with open(os.devnull, "w") as devnull:
+      dwp_proc = subprocess.Popen(wrapper_utils.CommandToRun(
+          [args.dwp, '-e', args.sofile, '-o', args.sofile + '.dwp']),
+                                  stdout=devnull,
+                                  stderr=subprocess.STDOUT)
 
   # Next, generate the contents of the TOC file.
   result, toc = CollectTOC(args)

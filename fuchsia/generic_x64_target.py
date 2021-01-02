@@ -14,10 +14,10 @@ from common import SDK_ROOT, EnsurePathExists, \
 
 
 def GetTargetType():
-  return GenericX64Target
+  return GenericX64PavedDeviceTarget
 
 
-class GenericX64Target(device_target.DeviceTarget):
+class GenericX64PavedDeviceTarget(device_target.DeviceTarget):
   """In addition to the functionality provided by DeviceTarget, this class
   automatically handles paving of x64 devices that use generic Fuchsia build.
 
@@ -28,6 +28,24 @@ class GenericX64Target(device_target.DeviceTarget):
   device's SDK version is checked unless --os-check=ignore is set.
   If --os-check=update is set, then the target device is repaved if the SDK
   version doesn't match."""
+
+  TARGET_HASH_FILE_PATH = '/data/.hash'
+
+  def _SDKHashMatches(self):
+    """Checks if /data/.hash on the device matches SDK_ROOT/.hash.
+
+    Returns True if the files are identical, or False otherwise.
+    """
+
+    with tempfile.NamedTemporaryFile() as tmp:
+      # TODO: Avoid using an exception for when file is unretrievable.
+      try:
+        self.GetFile(TARGET_HASH_FILE_PATH, tmp.name)
+      except subprocess.CalledProcessError:
+        # If the file is unretrievable for whatever reason, assume mismatch.
+        return False
+
+      return filecmp.cmp(tmp.name, os.path.join(SDK_ROOT, '.hash'), False)
 
   def _ProvisionDeviceIfNecessary(self):
     should_provision = False
@@ -51,6 +69,7 @@ class GenericX64Target(device_target.DeviceTarget):
 
   def _ProvisionDevice(self):
     """Pave a device with a generic image of Fuchsia."""
+
     bootserver_path = GetHostToolPathFromPlatform('bootserver')
     bootserver_command = [
         bootserver_path, '-1', '--fvm',
@@ -59,7 +78,7 @@ class GenericX64Target(device_target.DeviceTarget):
                                     self._GetTargetSdkArch(),
                                     boot_data.TARGET_TYPE_GENERIC)),
         EnsurePathExists(
-            boot_data.GetBootImage(self._output_dir, self._GetTargetSdkArch(),
+            boot_data.GetBootImage(self._out_dir, self._GetTargetSdkArch(),
                                    boot_data.TARGET_TYPE_GENERIC))
     ]
 
@@ -67,7 +86,7 @@ class GenericX64Target(device_target.DeviceTarget):
       bootserver_command += ['-n', self._node_name]
 
     bootserver_command += ['--']
-    bootserver_command += boot_data.GetKernelArgs(self._output_dir)
+    bootserver_command += boot_data.GetKernelArgs(self._out_dir)
 
     logging.debug(' '.join(bootserver_command))
     _, stdout = SubprocessCallWithTimeout(bootserver_command,
@@ -75,23 +94,6 @@ class GenericX64Target(device_target.DeviceTarget):
                                           timeout_secs=300)
 
     self._ParseNodename(stdout)
-
-    # Start loglistener to save system logs.
-    if self._system_log_file:
-      self._StartLoglistener()
-
-    # Repeatdly query mDNS until we find the device, or we hit
-    # BOOT_DISCOVERY_ATTEMPTS
-    logging.info('Waiting for device to join network.')
-    for _ in xrange(device_target.BOOT_DISCOVERY_ATTEMPTS):
-      if self.__Discover():
-        break
-
-    if not self._host:
-      raise Exception("Device %s couldn't be discovered via mDNS." %
-                      self._node_name)
-
-    self._WaitUntilReady()
 
     # Update the target's hash to match the current tree's.
     self.PutFile(os.path.join(SDK_ROOT, '.hash'), TARGET_HASH_FILE_PATH)

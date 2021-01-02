@@ -28,10 +28,12 @@ BOOT_DISCOVERY_ATTEMPTS = 30
 # Number of failed connection attempts before redirecting system logs to stdout.
 CONNECT_RETRY_COUNT_BEFORE_LOGGING = 10
 
-TARGET_HASH_FILE_PATH = '/data/.hash'
+# Number of seconds to wait for device discovery.
+BOOT_DISCOVERY_TIMEOUT_SECS = 2 * 60
 
-# Number of seconds to wait when querying a list of all devices over mDNS.
-_LIST_DEVICES_TIMEOUT_SECS = 3
+# The timeout limit for one call to the device-finder tool.
+_DEVICE_FINDER_TIMEOUT_LIMIT_SECS = \
+    BOOT_DISCOVERY_TIMEOUT_SECS / BOOT_DISCOVERY_ATTEMPTS
 
 # Time between a reboot command is issued and when connection attempts from the
 # host begin.
@@ -60,10 +62,17 @@ class DeviceTarget(target.Target):
   If |_host| is set:
     Deploy to a device at the host IP address as-is."""
 
-  def __init__(self, output_dir, target_cpu, host=None, node_name=None,
-               port=None, ssh_config=None, fuchsia_out_dir=None,
-               os_check='update', system_log_file=None):
-    """output_dir: The directory which will contain the files that are
+  def __init__(self,
+               out_dir,
+               target_cpu,
+               host=None,
+               node_name=None,
+               port=None,
+               ssh_config=None,
+               fuchsia_out_dir=None,
+               os_check='update',
+               system_log_file=None):
+    """out_dir: The directory which will contain the files that are
                    generated to support the deployment.
     target_cpu: The CPU architecture of the deployment target. Can be
                 "x64" or "arm64".
@@ -78,14 +87,12 @@ class DeviceTarget(target.Target):
                   mismatch.
               If 'ignore', the target's SDK version is ignored."""
 
-    super(DeviceTarget, self).__init__(output_dir, target_cpu)
+    super(DeviceTarget, self).__init__(out_dir, target_cpu)
 
-    self._port = port if port else 22
     self._system_log_file = system_log_file
     self._host = host
+    self._port = port
     self._fuchsia_out_dir = None
-    if fuchsia_out_dir:
-      self._fuchsia_out_dir = os.path.expanduser(fuchsia_out_dir)
     self._node_name = node_name
     self._os_check = os_check
     self._amber_repo = None
@@ -93,7 +100,7 @@ class DeviceTarget(target.Target):
     if self._host and self._node_name:
       raise Exception('Only one of "--host" or "--name" can be specified.')
 
-    if self._fuchsia_out_dir:
+    if fuchsia_out_dir:
       if ssh_config:
         raise Exception('Only one of "--fuchsia-out-dir" or "--ssh_config" can '
                         'be specified.')
@@ -110,8 +117,8 @@ class DeviceTarget(target.Target):
 
     else:
       # Default to using an automatically generated SSH config and keys.
-      boot_data.ProvisionSSH(output_dir)
-      self._ssh_config_path = boot_data.GetSSHConfigPath(output_dir)
+      boot_data.ProvisionSSH(out_dir)
+      self._ssh_config_path = boot_data.GetSSHConfigPath(out_dir)
 
   @staticmethod
   def RegisterArgs(arg_parser):
@@ -126,19 +133,15 @@ class DeviceTarget(target.Target):
     device_args.add_argument('--port',
                              '-p',
                              type=int,
-                             default=22,
+                             default=None,
                              help='The port of the SSH service running on the '
                              'device. Optional.')
     device_args.add_argument('--ssh-config',
                              '-F',
                              help='The path to the SSH configuration used for '
                              'connecting to the target device.')
-    device_args.add_argument('--fuchsia-out-dir',
-                             help='Path to a Fuchsia build output directory. '
-                             'Equivalent to setting --ssh_config and '
-                             '--os-check=ignore')
     device_args.add_argument(
-        '--os_check',
+        '--os-check',
         choices=['check', 'update', 'ignore'],
         default='update',
         help="Sets the OS version enforcement policy. If 'check', then the "
@@ -146,22 +149,13 @@ class DeviceTarget(target.Target):
         "match. If 'update', then the target device will automatically "
         "be repaved. If 'ignore', then the OS version won\'t be checked.")
 
-  def _SDKHashMatches(self):
-    """Checks if /data/.hash on the device matches SDK_ROOT/.hash.
-
-    Returns True if the files are identical, or False otherwise.
-    """
-    with tempfile.NamedTemporaryFile() as tmp:
-      try:
-        self.GetFile(TARGET_HASH_FILE_PATH, tmp.name)
-      except subprocess.CalledProcessError:
-        # If the file is unretrievable for whatever reason, assume mismatch.
-        return False
-
-      return filecmp.cmp(tmp.name, os.path.join(SDK_ROOT, '.hash'), False)
-
   def _ProvisionDeviceIfNecessary(self):
-    pass
+    if self._Discover():
+      self._WaitUntilReady()
+    else:
+      raise Exception('Could not find device. If the device is connected '
+                      'to the host remotely, make sure that --host flag is '
+                      'set and that remote serving is set up.')
 
   def _Discover(self):
     """Queries mDNS for the IP address of a booted Fuchsia instance whose name
@@ -176,13 +170,19 @@ class DeviceTarget(target.Target):
     dev_finder_path = GetHostToolPathFromPlatform('device-finder')
 
     if self._node_name:
-      command = [dev_finder_path, 'resolve',
-                 '-device-limit', '1',  # Exit early as soon as a host is found.
-                 self._node_name]
+      command = [
+          dev_finder_path,
+          'resolve',
+          '-timeout',
+          "%ds" % _DEVICE_FINDER_TIMEOUT_LIMIT_SECS,
+          '-device-limit',
+          '1',  # Exit early as soon as a host is found.
+          self._node_name
+      ]
     else:
       command = [
           dev_finder_path, 'list', '-full', '-timeout',
-          "%ds" % _LIST_DEVICES_TIMEOUT_SECS
+          "%ds" % _DEVICE_FINDER_TIMEOUT_LIMIT_SECS
       ]
 
     proc = subprocess.Popen(command,
@@ -190,7 +190,6 @@ class DeviceTarget(target.Target):
                             stderr=open(os.devnull, 'w'))
 
     output = set(proc.communicate()[0].strip().split('\n'))
-
     if proc.returncode != 0:
       return False
 
@@ -224,8 +223,6 @@ class DeviceTarget(target.Target):
       self._WaitUntilReady()
     else:
       self._ProvisionDeviceIfNecessary()
-      assert self._node_name
-      assert self._host
 
   def GetAmberRepo(self):
     if not self._amber_repo:
@@ -252,8 +249,8 @@ class DeviceTarget(target.Target):
     # Repeatdly query mDNS until we find the device, or we hit the timeout of
     # DISCOVERY_TIMEOUT_SECS.
     logging.info('Waiting for device to join network.')
-    for _ in xrange(_BOOT_DISCOVERY_ATTEMPTS):
-      if self.__Discover():
+    for _ in xrange(BOOT_DISCOVERY_ATTEMPTS):
+      if self._Discover():
         break
 
     if not self._host:
@@ -261,9 +258,6 @@ class DeviceTarget(target.Target):
                       self._node_name)
 
     self._WaitUntilReady();
-
-    # Update the target's hash to match the current tree's.
-    self.PutFile(os.path.join(SDK_ROOT, '.hash'), TARGET_HASH_FILE_PATH)
 
   def _GetEndpoint(self):
     return (self._host, self._port)

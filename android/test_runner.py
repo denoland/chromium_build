@@ -227,6 +227,12 @@ def AddCommonOptions(parser):
       dest='run_disabled', action='store_true',
       help='Also run disabled tests if applicable.')
 
+  # These are currently only implemented for gtests.
+  parser.add_argument('--isolated-script-test-output',
+                      help='If present, store test results on this path.')
+  parser.add_argument('--isolated-script-test-perf-output',
+                      help='If present, store chartjson results on this path.')
+
   AddTestLauncherOptions(parser)
 
 
@@ -257,11 +263,6 @@ def AddDeviceOptions(parser):
       type=os.path.realpath,
       help='Specify the absolute path of the adb binary that '
            'should be used.')
-  # TODO(crbug.com/1097306): Remove this once callers have all switched to
-  # --denylist-file.
-  parser.add_argument('--blacklist-file',
-                      dest='denylist_file',
-                      help=argparse.SUPPRESS)
   parser.add_argument('--denylist-file',
                       type=os.path.realpath,
                       help='Device denylist file.')
@@ -349,9 +350,6 @@ def AddGTestOptions(parser):
       help='Host directory to which app data files will be'
            ' saved. Used with --app-data-file.')
   parser.add_argument(
-      '--isolated-script-test-perf-output',
-      help='If present, store chartjson results on this path.')
-  parser.add_argument(
       '--delete-stale-data',
       dest='delete_stale_data', action='store_true',
       help='Delete stale test data on the device.')
@@ -375,6 +373,9 @@ def AddGTestOptions(parser):
       '--gs-test-artifacts-bucket',
       help=('If present, test artifacts will be uploaded to this Google '
             'Storage bucket.'))
+  parser.add_argument(
+      '--render-test-output-dir',
+      help='If present, store rendering artifacts in this path.')
   parser.add_argument(
       '--runtime-deps-path',
       dest='runtime_deps_path', type=os.path.realpath,
@@ -493,6 +494,15 @@ def AddInstrumentationTestOptions(parser):
            'the first element being the package and the second the path to the '
            'replacement APK. Only supports replacing one package. Example: '
            '--replace-system-package com.example.app,path/to/some.apk')
+  parser.add_argument(
+      '--remove-system-package',
+      default=[],
+      action='append',
+      dest='system_packages_to_remove',
+      help='Specifies a system package to remove before testing if it exists '
+      'on the system. WARNING: THIS WILL PERMANENTLY REMOVE THE SYSTEM APP. '
+      'Unlike --replace-system-package, the app will not be restored after '
+      'tests are finished.')
 
   parser.add_argument(
       '--use-webview-provider',
@@ -644,6 +654,13 @@ def AddJUnitTestOptions(parser):
   parser.add_argument(
       '--runner-filter',
       help='Filters tests by runner class. Must be fully qualified.')
+  parser.add_argument(
+      '--shards',
+      default=1,
+      type=int,
+      help='Number of shards to run junit tests in parallel on. Only 1 shard '
+      'is supported when test-filter is specified. Values less than 1 will '
+      'use auto select.')
   parser.add_argument(
       '-s', '--test-suite', required=True,
       help='JUnit test suite to run.')
@@ -835,6 +852,8 @@ def RunTestsInPlatformMode(args, result_sink_client=None):
     finally:
       if args.json_results_file and os.path.exists(json_file.name):
         shutil.move(json_file.name, args.json_results_file)
+      elif args.isolated_script_test_output and os.path.exists(json_file.name):
+        shutil.move(json_file.name, args.isolated_script_test_output)
       else:
         os.remove(json_file.name)
 
@@ -846,10 +865,16 @@ def RunTestsInPlatformMode(args, result_sink_client=None):
       global_results_tags.add('UNRELIABLE_RESULTS')
       raise
     finally:
-      json_results.GenerateJsonResultsFile(
-          all_raw_results, json_file.name,
-          global_tags=list(global_results_tags),
-          indent=2)
+      if args.isolated_script_test_output:
+        json_results.GenerateJsonTestResultFormatFile(all_raw_results,
+                                                      json_file.name,
+                                                      indent=2)
+      else:
+        json_results.GenerateJsonResultsFile(
+            all_raw_results,
+            json_file.name,
+            global_tags=list(global_results_tags),
+            indent=2)
 
   @contextlib.contextmanager
   def upload_logcats_file():
@@ -915,7 +940,11 @@ def RunTestsInPlatformMode(args, result_sink_client=None):
         iteration_count += 1
         for r in iteration_results.GetAll():
           if result_sink_client:
-            result_sink_client.Post(r.GetName(), r.GetType(), r.GetLog())
+            # Some tests put in non utf-8 char as part of the test
+            # which breaks uploads, so need to decode and re-encode.
+            result_sink_client.Post(
+                r.GetName(), r.GetType(),
+                r.GetLog().decode('utf-8', 'replace').encode('utf-8'))
 
           result_counts[r.GetName()][r.GetType()] += 1
         report_results.LogFull(
@@ -953,7 +982,8 @@ def RunTestsInPlatformMode(args, result_sink_client=None):
                          str(tot_tests),
                          str(iteration_count))
 
-    if args.local_output or not local_utils.IsOnSwarming():
+    if (args.local_output or not local_utils.IsOnSwarming()
+        ) and not args.isolated_script_test_output:
       with out_manager.ArchivedTempfile(
           'test_results_presentation.html',
           'test_results_presentation',
@@ -1049,13 +1079,18 @@ def main():
     else:
       parser.error('unrecognized arguments: %s' % ' '.join(unknown_args))
 
-  # --replace-system-package has the potential to cause issues if
-  # --enable-concurrent-adb is set, so disallow that combination
-  if (hasattr(args, 'replace_system_package') and
-      hasattr(args, 'enable_concurrent_adb') and args.replace_system_package and
-      args.enable_concurrent_adb):
-    parser.error('--replace-system-package and --enable-concurrent-adb cannot '
-                 'be used together')
+  # --replace-system-package/--remove-system-package has the potential to cause
+  # issues if --enable-concurrent-adb is set, so disallow that combination.
+  concurrent_adb_enabled = (hasattr(args, 'enable_concurrent_adb')
+                            and args.enable_concurrent_adb)
+  replacing_system_packages = (hasattr(args, 'replace_system_package')
+                               and args.replace_system_package)
+  removing_system_packages = (hasattr(args, 'system_packages_to_remove')
+                              and args.system_packages_to_remove)
+  if (concurrent_adb_enabled
+      and (replacing_system_packages or removing_system_packages)):
+    parser.error('--enable-concurrent-adb cannot be used with either '
+                 '--replace-system-package or --remove-system-package')
 
   # --use-webview-provider has the potential to cause issues if
   # --enable-concurrent-adb is set, so disallow that combination

@@ -5,6 +5,7 @@
 import("//build/config/chrome_build.gni")
 import("//build/config/chromeos/args.gni")
 import("//build/config/gclient_args.gni")
+import("//build/config/python.gni")
 
 assert(is_chromeos)
 
@@ -97,7 +98,8 @@ template("generate_runner_script") {
          "Tast tests are invoked from binaries shipped with the VM image. " +
              "There should be no locally built binary needed.")
 
-  action(target_name) {
+  # TODO(crbug.com/1112471): Get this to run cleanly under Python 3.
+  python2_action(target_name) {
     if (defined(runtime_deps_file)) {
       write_runtime_deps = runtime_deps_file
     }
@@ -111,6 +113,9 @@ template("generate_runner_script") {
     }
 
     data = [
+      "//.vpython",
+      "//testing/test_env.py",
+
       # We use android test-runner's results libs to construct gtest output
       # json.
       "//build/android/pylib/__init__.py",
@@ -151,6 +156,8 @@ template("generate_runner_script") {
 
     if (cros_is_vm) {
       args += [ "--use-vm" ]
+    } else {
+      args += [ "--flash" ]
     }
 
     # If we have public Chromium builds, use public Chromium OS images when

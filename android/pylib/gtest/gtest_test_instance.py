@@ -3,6 +3,7 @@
 # found in the LICENSE file.
 
 import HTMLParser
+import json
 import logging
 import os
 import re
@@ -24,6 +25,7 @@ with host_paths.SysPath(host_paths.BUILD_COMMON_PATH):
 
 BROWSER_TEST_SUITES = [
     'android_browsertests',
+    'android_sync_integration_tests',
     'components_browsertests',
     'content_browsertests',
     'weblayer_browsertests',
@@ -83,7 +85,7 @@ _EXTRA_SHARD_SIZE_LIMIT = (
 # results.
 _RE_TEST_STATUS = re.compile(
     # Test state.
-    r'\[ +((?:RUN)|(?:FAILED)|(?:OK)|(?:CRASHED)) +\] ?'
+    r'\[ +((?:RUN)|(?:FAILED)|(?:OK)|(?:CRASHED)|(?:SKIPPED)) +\] ?'
     # Test name.
     r'([^ ]+)?'
     # Optional parameters.
@@ -189,6 +191,8 @@ def ParseGTestOutput(output, symbolizer, device_abi):
         result_type = None
       elif matcher.group(1) == 'OK':
         result_type = base_test_result.ResultType.PASS
+      elif matcher.group(1) == 'SKIPPED':
+        result_type = base_test_result.ResultType.SKIP
       elif matcher.group(1) == 'FAILED':
         result_type = base_test_result.ResultType.FAIL
       elif matcher.group(1) == 'CRASHED':
@@ -253,6 +257,29 @@ def ParseGTestXML(xml_content):
   return results
 
 
+def ParseGTestJSON(json_content):
+  """Parse results in the JSON Test Results format."""
+  results = []
+  if not json_content:
+    return results
+
+  json_data = json.loads(json_content)
+
+  openstack = json_data['tests'].items()
+
+  while openstack:
+    name, value = openstack.pop()
+
+    if 'expected' in value and 'actual' in value:
+      result_type = base_test_result.ResultType.PASS if value[
+          'actual'] == 'PASS' else base_test_result.ResultType.FAIL
+      results.append(base_test_result.BaseTestResult(name, result_type))
+    else:
+      openstack += [("%s.%s" % (name, k), v) for k, v in value.iteritems()]
+
+  return results
+
+
 def TestNameWithoutDisabledPrefix(test_name):
   """Modify the test name without disabled prefix if prefix 'DISABLED_' or
   'FLAKY_' presents.
@@ -280,8 +307,10 @@ class GtestTestInstance(test_instance.TestInstance):
     self._extract_test_list_from_filter = args.extract_test_list_from_filter
     self._filter_tests_lock = threading.Lock()
     self._gs_test_artifacts_bucket = args.gs_test_artifacts_bucket
+    self._isolated_script_test_output = args.isolated_script_test_output
     self._isolated_script_test_perf_output = (
         args.isolated_script_test_perf_output)
+    self._render_test_output_dir = args.render_test_output_dir
     self._shard_timeout = args.shard_timeout
     self._store_tombstones = args.store_tombstones
     self._suite = args.suite_name[0]
@@ -427,8 +456,16 @@ class GtestTestInstance(test_instance.TestInstance):
     return self._gtest_filter
 
   @property
+  def isolated_script_test_output(self):
+    return self._isolated_script_test_output
+
+  @property
   def isolated_script_test_perf_output(self):
     return self._isolated_script_test_perf_output
+
+  @property
+  def render_test_output_dir(self):
+    return self._render_test_output_dir
 
   @property
   def package(self):

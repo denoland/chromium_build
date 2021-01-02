@@ -180,6 +180,9 @@ template("write_build_config") {
   }
 
   action_with_pydeps(target_name) {
+    # TODO(crbug.com/1112471): Get this to run cleanly under Python 3.
+    run_under_python2 = true
+
     forward_variables_from(invoker,
                            [
                              "deps",
@@ -223,6 +226,13 @@ template("write_build_config") {
       "--gn-target",
       _target_label,
     ]
+
+    if (defined(invoker.aar_path)) {
+      args += [
+        "--aar-path",
+        rebase_path(invoker.aar_path, root_build_dir),
+      ]
+    }
 
     if (defined(invoker.chromium_code) && !invoker.chromium_code) {
       # Default to chromium code if invoker did not pass anything.
@@ -505,11 +515,6 @@ template("write_build_config") {
           rebase_path(invoker.bundled_srcjars, root_build_dir)
       args += [ "--bundled-srcjars=$_rebased_bundled_srcjars" ]
     }
-    if (defined(invoker.input_jars_paths)) {
-      _rebased_input_jars_paths =
-          rebase_path(invoker.input_jars_paths, root_build_dir)
-      args += [ "--extra-classpath-jars=$_rebased_input_jars_paths" ]
-    }
     if (defined(invoker.proguard_enabled) && invoker.proguard_enabled) {
       args += [ "--proguard-enabled" ]
     }
@@ -517,6 +522,18 @@ template("write_build_config") {
       _rebased_proguard_mapping_path =
           rebase_path(invoker.proguard_mapping_path, root_build_dir)
       args += [ "--proguard-mapping-path=$_rebased_proguard_mapping_path" ]
+    }
+    if (defined(invoker.input_jars_paths)) {
+      _rebased_input_jars_paths =
+          rebase_path(invoker.input_jars_paths, root_build_dir)
+      args += [ "--extra-classpath-jars=$_rebased_input_jars_paths" ]
+    }
+    if (defined(invoker.mergeable_android_manifests)) {
+      _rebased_mergeable_android_manifests =
+          rebase_path(invoker.mergeable_android_manifests, root_build_dir)
+      args += [
+        "--mergeable-android-manifests=$_rebased_mergeable_android_manifests",
+      ]
     }
     if (defined(invoker.proguard_configs)) {
       _rebased_proguard_configs =
@@ -575,6 +592,10 @@ template("write_build_config") {
         invoker.version_code,
       ]
     }
+    if (defined(invoker.recursive_resource_deps) &&
+        invoker.recursive_resource_deps) {
+      args += [ "--recursive-resource-deps" ]
+    }
     if (current_toolchain != default_toolchain) {
       # This has to be a built-time error rather than a GN assert because many
       # packages have a mix of java and non-java targets. For example, the
@@ -622,6 +643,9 @@ template("generate_android_wrapper") {
 
 template("generate_r_java") {
   action_with_pydeps(target_name) {
+    # TODO(crbug.com/1112471): Get this to run cleanly under Python 3.
+    run_under_python2 = true
+
     forward_variables_from(invoker,
                            [
                              "deps",
@@ -728,10 +752,12 @@ template("test_runner_script") {
       data_deps = []
     }
 
+    executable = "//testing/test_env.py"
+
     if (defined(android_test_runner_script)) {
-      executable = android_test_runner_script
+      _runner_script = android_test_runner_script
     } else {
-      executable = "//build/android/test_runner.py"
+      _runner_script = "//build/android/test_runner.py"
     }
 
     deps = []
@@ -742,9 +768,10 @@ template("test_runner_script") {
     if (defined(invoker.data_deps)) {
       data_deps = invoker.data_deps
     }
-    data = []
+    data = [ "//testing/test_env.py" ]
 
     executable_args = [
+      "@WrappedPath(" + rebase_path(_runner_script, root_build_dir) + ")",
       _test_type,
       "--output-directory",
       "@WrappedPath(.)",
@@ -972,6 +999,9 @@ template("test_runner_script") {
 if (enable_java_templates) {
   template("android_lint") {
     action_with_pydeps(target_name) {
+      # TODO(crbug.com/1112471): Get this to run cleanly under Python 3.
+      run_under_python2 = true
+
       forward_variables_from(invoker, [ "testonly" ])
       if (!defined(deps)) {
         deps = []
@@ -984,11 +1014,9 @@ if (enable_java_templates) {
         pool = "//build/toolchain:link_pool($default_toolchain)"
       }
 
-      # Lint only requires generated sources and generated resources from the
-      # build. Since turbine __header targets already depend on and generate all
-      # the generated sources, and the __assetres targets include all generated
-      # resources, lint only needs to depend on the header and assetres targets
-      # rather than the top level java targets.
+      # Lint requires generated sources and generated resources from the build.
+      # Turbine __header targets depend on all generated sources, and the
+      # __assetres targets depend on all generated resources.
       if (defined(invoker.deps)) {
         foreach(_dep, invoker.deps) {
           _target_label = get_label_info(_dep, "label_no_toolchain")
@@ -996,16 +1024,12 @@ if (enable_java_templates) {
               filter_exclude([ _target_label ], _java_resource_patterns) !=
               []) {
             deps += [
-              # Strictly speaking the __header target is sufficient, since they
-              # already depend on resources (due to srcjar deps), but prefer to
-              # be more explicit here since if/when __header targets stop
-              # depending on resources (e.g. if R.java generation moves to java
-              # targets), lint will not be affected.
               "${_target_label}__assetres",
               "${_target_label}__header",
             ]
           } else {
-            # Keep non-java deps as they may generate files used by lint.
+            # Keep non-java deps as they may generate files used only by lint.
+            # e.g. generated suppressions.xml files.
             deps += [ _dep ]
           }
         }
@@ -1022,10 +1046,14 @@ if (enable_java_templates) {
 
       # Save generated xml files in a consistent location for debugging.
       _lint_gen_dir = "$target_gen_dir/$target_name"
+      _backported_methods = "//third_party/r8/backported_methods.txt"
 
       script = "//build/android/gyp/lint.py"
       depfile = "$target_gen_dir/$target_name.d"
-      inputs = [ _lint_binary_path ]
+      inputs = [
+        _lint_binary_path,
+        _backported_methods,
+      ]
 
       args = [
         "--depfile",
@@ -1040,6 +1068,8 @@ if (enable_java_templates) {
         "--min-sdk-version=$_min_sdk_version",
         "--android-sdk-root",
         rebase_path(lint_android_sdk_root, root_build_dir),
+        "--backported-methods",
+        rebase_path(_backported_methods, root_build_dir),
       ]
 
       if (defined(invoker.lint_suppressions_file)) {
@@ -1096,10 +1126,12 @@ if (enable_java_templates) {
 
         args += [
           "--manifest-path=@FileArg($_rebased_build_config:deps_info:lint_android_manifest)",
+          "--extra-manifest-paths=@FileArg($_rebased_build_config:deps_info:lint_extra_android_manifests)",
 
           # Lint requires all source and all resource files to be passed in the
           # same invocation for checks like UnusedResources.
           "--java-sources=@FileArg($_rebased_build_config:deps_info:lint_java_sources)",
+          "--aars=@FileArg($_rebased_build_config:deps_info:lint_aars)",
           "--srcjars=@FileArg($_rebased_build_config:deps_info:lint_srcjars)",
           "--resource-sources=@FileArg($_rebased_build_config:deps_info:lint_resource_sources)",
           "--resource-zips=@FileArg($_rebased_build_config:deps_info:lint_resource_zips)",
@@ -1107,6 +1139,13 @@ if (enable_java_templates) {
           # The full classpath is required for annotation checks like @IntDef.
           "--classpath=@FileArg($_rebased_build_config:deps_info:javac_full_interface_classpath)",
         ]
+
+        if (defined(invoker.lint_expected_warnings)) {
+          args += [
+            "--expected-warnings",
+            invoker.lint_expected_warnings,
+          ]
+        }
       }
 
       outputs = [ _stamp_path ]
@@ -1118,7 +1157,6 @@ if (enable_java_templates) {
   }
 
   template("proguard") {
-    set_sources_assignment_filter([])
     forward_variables_from(invoker,
                            [
                              "data",
@@ -1191,6 +1229,9 @@ if (enable_java_templates) {
           "--dex-dest=@FileArg($_rebased_module_build_config:final_dex:path)",
           "--feature-jars=@FileArg($_rebased_module_build_config:deps_info:device_classpath)",
         ]
+        if (defined(_feature_module.uses_split)) {
+          _args += [ "--uses-split=${_feature_module.name}:${_feature_module.uses_split}" ]
+        }
         _deps += [ _feature_module.build_config_target ]
       }
       _stamp = "${target_gen_dir}/${target_name}.r8.stamp"
@@ -1215,8 +1256,9 @@ if (enable_java_templates) {
       _args += [ "--disable-outlining" ]
     }
 
-    if (defined(invoker.disable_checkdiscard) && invoker.disable_checkdiscard) {
-      _args += [ "--disable-checkdiscard" ]
+    if (defined(invoker.enable_proguard_checks) &&
+        !invoker.enable_proguard_checks) {
+      _args += [ "--disable-checks" ]
     }
 
     if (defined(invoker.is_static_library) && invoker.is_static_library) {
@@ -1270,6 +1312,9 @@ if (enable_java_templates) {
       _expectations_target =
           "${invoker.top_target_name}_validate_proguard_config"
       action_with_pydeps(_expectations_target) {
+        # TODO(crbug.com/1112471): Get this to run cleanly under Python 3.
+        run_under_python2 = true
+
         script = _script
 
         # Need to depend on all deps so that proguard.txt within .aar files get
@@ -1313,6 +1358,9 @@ if (enable_java_templates) {
       _deps += [ ":$_expectations_target" ]
     }
     action_with_pydeps(target_name) {
+      # TODO(crbug.com/1112471): Get this to run cleanly under Python 3.
+      run_under_python2 = true
+
       script = _script
       deps = _deps
       inputs = _inputs
@@ -1342,6 +1390,9 @@ if (enable_java_templates) {
   #
   template("java_binary_script") {
     action_with_pydeps(target_name) {
+      # TODO(crbug.com/1112471): Get this to run cleanly under Python 3.
+      run_under_python2 = true
+
       forward_variables_from(invoker,
                              [
                                "deps",
@@ -1448,8 +1499,8 @@ if (enable_java_templates) {
                                  "data",
                                  "data_deps",
                                  "deps",
-                                 "disable_checkdiscard",
                                  "disable_r8_outlining",
+                                 "enable_proguard_checks",
                                  "expected_proguard_config",
                                  "expected_proguard_config_base",
                                  "is_static_library",
@@ -1548,6 +1599,9 @@ if (enable_java_templates) {
         _main_dex_list_path = invoker.output + ".main_dex_list"
         _main_dex_list_target_name = "${target_name}__main_dex_list"
         action_with_pydeps(_main_dex_list_target_name) {
+          # TODO(crbug.com/1112471): Get this to run cleanly under Python 3.
+          run_under_python2 = true
+
           forward_variables_from(invoker, [ "testonly" ])
 
           script = "//build/android/gyp/main_dex_list.py"
@@ -1622,6 +1676,9 @@ if (enable_java_templates) {
       }
 
       action_with_pydeps(target_name) {
+        # TODO(crbug.com/1112471): Get this to run cleanly under Python 3.
+        run_under_python2 = true
+
         forward_variables_from(invoker,
                                [
                                  "data",
@@ -1733,7 +1790,7 @@ if (enable_java_templates) {
             ]
           }
           if (!enable_bazel_desugar) {
-            _args += [ "--show-desugar-default-interface-warnings" ]
+            args += [ "--show-desugar-default-interface-warnings" ]
           }
         }
         if (_desugar_needs_classpath) {
@@ -2197,12 +2254,11 @@ if (enable_java_templates) {
   #
   #   r_text_out_path: Path for the generated R.txt file.
   #
-  #   srcjar_path: (optional) Path to a generated .srcjar containing the
-  #                           generated R.java source file.
-  #
   template("prepare_resources") {
     action_with_pydeps(target_name) {
-      set_sources_assignment_filter([])
+      # TODO(crbug.com/1112471): Get this to run cleanly under Python 3.
+      run_under_python2 = true
+
       forward_variables_from(invoker,
                              [
                                "deps",
@@ -2249,14 +2305,6 @@ if (enable_java_templates) {
         args += [
           "--android-manifest",
           rebase_path(invoker.android_manifest, root_build_dir),
-        ]
-      }
-
-      if (defined(invoker.srcjar_path)) {
-        outputs += [ invoker.srcjar_path ]
-        args += [
-          "--srcjar-out",
-          rebase_path(invoker.srcjar_path, root_build_dir),
         ]
       }
 
@@ -2402,7 +2450,6 @@ if (enable_java_templates) {
   #   proguard_file_main_dex: (optional)
   #
   template("compile_resources") {
-    set_sources_assignment_filter([])
     forward_variables_from(invoker,
                            [
                              "testonly",
@@ -2603,8 +2650,9 @@ if (enable_java_templates) {
                  "${invoker.shared_resources_allowlist_locales}" ]
     }
 
-    if (defined(invoker.enforce_resource_overlays) &&
-        invoker.enforce_resource_overlays) {
+    if (!defined(testonly) || !testonly ||
+        (defined(invoker.enforce_resource_overlays_in_tests) &&
+         invoker.enforce_resource_overlays_in_tests)) {
       _args += [ "--dependencies-res-zip-overlays=@FileArg($_rebased_build_config:deps_info:dependency_zip_overlays)" ]
     } else {
       _args += [ "--dependencies-res-zip-overlays=@FileArg($_rebased_build_config:deps_info:dependency_zips)" ]
@@ -2698,10 +2746,18 @@ if (enable_java_templates) {
       _args += [ "--is-bundle-module" ]
     }
 
+    if (defined(invoker.uses_split)) {
+      assert(invoker.is_bundle_module)
+      _args += [ "--uses-split=${invoker.uses_split}" ]
+    }
+
     if (defined(invoker.expected_android_manifest)) {
       _expectations_target =
           "${invoker.top_target_name}_validate_android_manifest"
       action_with_pydeps(_expectations_target) {
+        # TODO(crbug.com/1112471): Get this to run cleanly under Python 3.
+        run_under_python2 = true
+
         _actual_file = "${invoker.android_manifest}.normalized"
         _failure_file =
             "$_expectations_failure_dir/" +
@@ -2744,6 +2800,9 @@ if (enable_java_templates) {
     }
 
     action_with_pydeps(target_name) {
+      # TODO(crbug.com/1112471): Get this to run cleanly under Python 3.
+      run_under_python2 = true
+
       script = _script
       depfile = "$target_gen_dir/${target_name}.d"
       inputs = _inputs
@@ -2766,6 +2825,9 @@ if (enable_java_templates) {
   #
   template("create_size_info_files") {
     action_with_pydeps(target_name) {
+      # TODO(crbug.com/1112471): Get this to run cleanly under Python 3.
+      run_under_python2 = true
+
       forward_variables_from(invoker,
                              [
                                "testonly",
@@ -2987,6 +3049,8 @@ if (enable_java_templates) {
       _expectations_target =
           "${invoker.top_target_name}_validate_libs_and_assets"
       action_with_pydeps(_expectations_target) {
+        # TODO(crbug.com/1112471): Get this to run cleanly under Python 3.
+        run_under_python2 = true
         _actual_file = "$target_gen_dir/$target_name.libs_and_assets"
         _failure_file =
             "$_expectations_failure_dir/" +
@@ -3024,6 +3088,8 @@ if (enable_java_templates) {
       _deps += [ ":$_expectations_target" ]
     }
     action_with_pydeps(target_name) {
+      # TODO(crbug.com/1112471): Get this to run cleanly under Python 3.
+      run_under_python2 = true
       depfile = "$target_gen_dir/$target_name.d"
       inputs = _inputs
       deps = _deps
@@ -3130,6 +3196,9 @@ if (enable_java_templates) {
     }
 
     action_with_pydeps(target_name) {
+      # TODO(crbug.com/1112471): Get this to run cleanly under Python 3.
+      run_under_python2 = true
+
       if (invoker.use_turbine) {
         script = "//build/android/gyp/turbine.py"
       } else {
@@ -3453,7 +3522,6 @@ if (enable_java_templates) {
     # TODO(crbug.com/1042017): Remove.
     not_needed(invoker, [ "no_build_hooks" ])
 
-    set_sources_assignment_filter([])
     forward_variables_from(invoker, [ "testonly" ])
     _is_prebuilt = defined(invoker.jar_path)
     _is_annotation_processor = invoker.type == "java_annotation_processor"
@@ -3553,7 +3621,7 @@ if (enable_java_templates) {
             "$target_out_dir/$_output_name.processed.jar"
         _dex_path = "$target_out_dir/$_main_target_name.dex.jar"
         _enable_desugar =
-            !defined(invoker.enable_desugar) || !invoker.enable_desugar
+            !defined(invoker.enable_desugar) || invoker.enable_desugar
       }
 
       # For static libraries, the javac jar output is created at the intermediate
@@ -3674,6 +3742,7 @@ if (enable_java_templates) {
                                "input_jars_paths",
                                "main_class",
                                "public_target_label",
+                               "aar_path",
                                "proguard_configs",
                                "proguard_enabled",
                                "proguard_mapping_path",
@@ -3912,6 +3981,9 @@ if (enable_java_templates) {
         _analysis_public_deps += [ ":$_compile_java_errorprone_target" ]
       }
     }  # _has_sources
+
+    # TODO(crbug.com/1123216): Implement bytecode_rewriter_target.
+    not_needed(invoker, [ "bytecode_rewriter_target" ])
 
     if (_is_prebuilt) {
       generate_interface_jar(_header_target_name) {
@@ -4217,6 +4289,8 @@ template("create_android_app_bundle_module") {
   if (defined(invoker.expected_libs_and_assets)) {
     _expectations_target = "${invoker.top_target_name}_validate_libs_and_assets"
     action_with_pydeps(_expectations_target) {
+      # TODO(crbug.com/1112471): Get this to run cleanly under Python 3.
+      run_under_python2 = true
       _actual_file = "$target_gen_dir/$target_name.libs_and_assets"
       _failure_file = "$_expectations_failure_dir/" +
                       string_replace(invoker.expected_libs_and_assets, "/", "_")
@@ -4262,6 +4336,8 @@ template("create_android_app_bundle_module") {
   }
 
   action_with_pydeps(target_name) {
+    # TODO(crbug.com/1112471): Get this to run cleanly under Python 3.
+    run_under_python2 = true
     deps = _deps
     inputs = _inputs
     outputs = _outputs
