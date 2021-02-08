@@ -147,7 +147,7 @@ declare_args() {
   # or its COFF equivalent. Leaving out those tags reduces the size of the debug
   # sections to a much more reasonable 5MB while still providing pretty usable
   # stack traces when the application crashes.
-  no_inline_line_tables = is_clang
+  no_inline_line_tables = false
 
   # Token limits may not be accurate for build configs not covered by the CQ,
   # so only enable them by default for mainstream build configs.
