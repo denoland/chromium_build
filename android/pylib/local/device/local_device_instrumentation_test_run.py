@@ -480,11 +480,23 @@ class LocalDeviceInstrumentationTestRun(
     batched_tests = dict()
     other_tests = []
     for test in tests:
-      if 'Batch' in test['annotations'] and 'RequiresRestart' not in test[
-          'annotations']:
-        batch_name = test['annotations']['Batch']['value']
+      annotations = test['annotations']
+      if 'Batch' in annotations and 'RequiresRestart' not in annotations:
+        batch_name = annotations['Batch']['value']
         if not batch_name:
           batch_name = test['class']
+
+        # Feature flags won't work in instrumentation tests unless the activity
+        # is restarted.
+        # Tests with identical features are grouped to minimize restarts.
+        if 'Batch$SplitByFeature' in annotations:
+          if 'Features$EnableFeatures' in annotations:
+            batch_name += '|enabled:' + ','.join(
+                sorted(annotations['Features$EnableFeatures']['value']))
+          if 'Features$DisableFeatures' in annotations:
+            batch_name += '|disabled:' + ','.join(
+                sorted(annotations['Features$DisableFeatures']['value']))
+
         if not batch_name in batched_tests:
           batched_tests[batch_name] = []
         batched_tests[batch_name].append(test)
@@ -1193,6 +1205,9 @@ class LocalDeviceInstrumentationTestRun(
     # We've tried to disable retries in the past with mixed results.
     # See crbug.com/619055 for historical context and crbug.com/797002
     # for ongoing efforts.
+    if 'Batch' in test['annotations'] and test['annotations']['Batch'][
+        'value'] == 'UnitTests':
+      return False
     del test, result
     return True
 
