@@ -20,13 +20,22 @@ else:
 
 # src directory
 ROOT_SRC_DIR = os.path.dirname(
-    os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
-
+    os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.realpath(__file__)))))
 
 # This script prints information about the build system, the operating
 # system and the iOS or Mac SDK (depending on the platform "iphonesimulator",
 # "iphoneos" or "macosx" generally).
+
+
+def LoadPList(path):
+  """Loads Plist at |path| and returns it as a dictionary."""
+  # Cloned from //build/apple/plist_util.py.
+  if sys.version_info.major == 2:
+    return plistlib.readPlist(path)
+  with open(path, 'rb') as f:
+    return plistlib.load(f)
+
 
 def SplitVersion(version):
   """Splits the Xcode version to 3 values.
@@ -59,9 +68,9 @@ def FormatVersion(version):
 def FillXcodeVersion(settings, developer_dir):
   """Fills the Xcode version and build number into |settings|."""
   if developer_dir:
-    xcode_version_plist_path = os.path.join(
-        developer_dir, 'Contents/version.plist')
-    version_plist = plistlib.readPlist(xcode_version_plist_path)
+    xcode_version_plist_path = os.path.join(developer_dir,
+                                            'Contents/version.plist')
+    version_plist = LoadPList(xcode_version_plist_path)
     settings['xcode_version'] = FormatVersion(
         version_plist['CFBundleShortVersionString'])
     settings['xcode_version_int'] = int(settings['xcode_version'], 10)
@@ -137,21 +146,19 @@ if __name__ == '__main__':
                       dest="get_machine_info",
                       default=False,
                       help="Returns machine info in addition to xcode info.")
-  parser.add_argument(
-      "--create_symlink_at",
-      action="store",
-      dest="create_symlink_at",
-      help="Create symlink of SDK at given location and "
-      "returns the symlinked paths as SDK info instead "
-      "of the original location.")
+  parser.add_argument("--create_symlink_at",
+                      action="store",
+                      dest="create_symlink_at",
+                      help="Create symlink of SDK at given location and "
+                      "returns the symlinked paths as SDK info instead "
+                      "of the original location.")
   args, unknownargs = parser.parse_known_args()
   if args.developer_dir:
     os.environ['DEVELOPER_DIR'] = args.developer_dir
 
   if len(unknownargs) != 1:
-    sys.stderr.write(
-        'usage: %s [iphoneos|iphonesimulator|macosx]\n' %
-        os.path.basename(sys.argv[0]))
+    sys.stderr.write('usage: %s [iphoneos|iphonesimulator|macosx]\n' %
+                     os.path.basename(sys.argv[0]))
     sys.exit(1)
 
   settings = {}

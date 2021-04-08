@@ -6,6 +6,7 @@ import contextlib
 import collections
 import itertools
 import logging
+import math
 import os
 import posixpath
 import subprocess
@@ -52,9 +53,6 @@ _EXTRA_TEST_LIST = (
         '.TestList')
 
 _SECONDS_TO_NANOS = int(1e9)
-
-# The amount of time a test executable may run before it gets killed.
-_TEST_TIMEOUT_SECONDS = 30*60
 
 # Tests that use SpawnedTestServer must run the LocalTestServerSpawner on the
 # host machine.
@@ -114,6 +112,16 @@ def _ExtractTestsFromFilter(gtest_filter):
   if '*' in gtest_filter:
     return None
   return patterns
+
+
+def _GetDeviceTimeoutMultiplier():
+  # Emulated devices typically run 20-150x slower than real-time.
+  # Give a way to control this through the DEVICE_TIMEOUT_MULTIPLIER
+  # environment variable.
+  multiplier = os.getenv("DEVICE_TIMEOUT_MULTIPLIER")
+  if multiplier:
+    return int(multiplier)
+  return 1
 
 
 def _MergeCoverageFiles(coverage_dir, profdata_dir):
@@ -297,8 +305,11 @@ class _ApkDelegate(object):
         extras[_EXTRA_TEST] = test[0]
     # pylint: enable=redefined-variable-type
 
+    # We need to use GetAppWritablePath here instead of GetExternalStoragePath
+    # since we will not have yet applied legacy storage permission workarounds
+    # on R+.
     stdout_file = device_temp_file.DeviceTempFile(
-        device.adb, dir=device.GetExternalStoragePath(), suffix='.gtest_out')
+        device.adb, dir=device.GetAppWritablePath(), suffix='.gtest_out')
     extras[_EXTRA_STDOUT_FILE] = stdout_file.name
 
     if self._wait_for_java_debugger:
@@ -326,11 +337,11 @@ class _ApkDelegate(object):
         if self._coverage_dir and device_api >= version_codes.LOLLIPOP:
           if not os.path.isdir(self._coverage_dir):
             os.makedirs(self._coverage_dir)
-          with tempfile_ext.NamedTemporaryDirectory(
-              prefix=self._coverage_dir) as temp_d:
-            _PullCoverageFiles(device, device_coverage_dir, temp_d)
-            _MergeCoverageFiles(self._coverage_dir,
-                                os.path.join(temp_d, 'profraw'))
+        # TODO(crbug.com/1179004) Use _MergeCoverageFiles when llvm-profdata
+        # not found is fixed.
+          _PullCoverageFiles(
+              device, device_coverage_dir,
+              os.path.join(self._coverage_dir, str(self._coverage_index)))
 
       return device.ReadFile(stdout_file.name).splitlines()
 
@@ -432,7 +443,10 @@ class _ExeDelegate(object):
     pass
 
   def Clear(self, device):
-    device.KillAll(self._exe_file_name, blocking=True, timeout=30, quiet=True)
+    device.KillAll(self._exe_file_name,
+                   blocking=True,
+                   timeout=30 * _GetDeviceTimeoutMultiplier(),
+                   quiet=True)
 
 
 class LocalDeviceGtestRun(local_device_test_run.LocalDeviceTestRun):
@@ -441,6 +455,11 @@ class LocalDeviceGtestRun(local_device_test_run.LocalDeviceTestRun):
     assert isinstance(env, local_device_environment.LocalDeviceEnvironment)
     assert isinstance(test_instance, gtest_test_instance.GtestTestInstance)
     super(LocalDeviceGtestRun, self).__init__(env, test_instance)
+
+    if self._test_instance.apk_helper:
+      self._installed_packages = [
+          self._test_instance.apk_helper.GetPackageName()
+      ]
 
     # pylint: disable=redefined-variable-type
     if self._test_instance.apk:
@@ -483,7 +502,7 @@ class LocalDeviceGtestRun(local_device_test_run.LocalDeviceTestRun):
             # Some gtest suites, e.g. unit_tests, have data dependencies that
             # can take longer than the default timeout to push. See
             # crbug.com/791632 for context.
-            timeout=600)
+            timeout=600 * math.ceil(_GetDeviceTimeoutMultiplier() / 10))
         if not host_device_tuples:
           dev.RemovePath(device_root, force=True, recursive=True, rename=True)
           dev.RunShellCommand(['mkdir', '-p', device_root], check_return=True)
@@ -561,14 +580,9 @@ class LocalDeviceGtestRun(local_device_test_run.LocalDeviceTestRun):
     # Delete suspect testcase from tests.
     tests = [test for test in tests if not test in self._crashes]
 
-    batch_size = self._test_instance.test_launcher_batch_limit
+    max_shard_size = self._test_instance.test_launcher_batch_limit
 
-    for i in xrange(0, device_count):
-      unbounded_shard = tests[i::device_count]
-      shards += [
-          unbounded_shard[j:j + batch_size]
-          for j in xrange(0, len(unbounded_shard), batch_size)
-      ]
+    shards.extend(self._PartitionTests(tests, device_count, max_shard_size))
     return shards
 
   #override
@@ -587,7 +601,7 @@ class LocalDeviceGtestRun(local_device_test_run.LocalDeviceTestRun):
     @local_device_environment.handle_shard_failures_with(
         on_failure=self._env.DenylistDevice)
     def list_tests(dev):
-      timeout = 30
+      timeout = 30 * _GetDeviceTimeoutMultiplier()
       retries = 1
       if self._test_instance.wait_for_java_debugger:
         timeout = None
@@ -681,8 +695,9 @@ class LocalDeviceGtestRun(local_device_test_run.LocalDeviceTestRun):
     else:
       desc = hash(tuple(test))
 
-    stream_name = 'logcat_%s_%s_%s' % (
-        desc, time.strftime('%Y%m%dT%H%M%S-UTC', time.gmtime()), device.serial)
+    stream_name = 'logcat_%s_shard%s_%s_%s' % (
+        desc, self._test_instance.external_shard_index,
+        time.strftime('%Y%m%dT%H%M%S-UTC', time.gmtime()), device.serial)
 
     logcat_file = None
     logmon = None
@@ -706,8 +721,9 @@ class LocalDeviceGtestRun(local_device_test_run.LocalDeviceTestRun):
   #override
   def _RunTest(self, device, test):
     # Run the test.
-    timeout = (self._test_instance.shard_timeout
-               * self.GetTool(device).GetTimeoutScale())
+    timeout = (self._test_instance.shard_timeout *
+               self.GetTool(device).GetTimeoutScale() *
+               _GetDeviceTimeoutMultiplier())
     if self._test_instance.wait_for_java_debugger:
       timeout = None
     if self._test_instance.store_tombstones:

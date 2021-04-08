@@ -17,6 +17,7 @@ import tempfile
 import time
 
 from devil import base_error
+from devil.android import apk_helper
 from devil.android import crash_handler
 from devil.android import device_errors
 from devil.android import device_temp_file
@@ -63,14 +64,22 @@ _WPR_GO_LINUX_X86_64_PATH = os.path.join(host_paths.DIR_SOURCE_ROOT,
 _TAG = 'test_runner_py'
 
 TIMEOUT_ANNOTATIONS = [
-  ('Manual', 10 * 60 * 60),
-  ('IntegrationTest', 30 * 60),
-  ('External', 10 * 60),
-  ('EnormousTest', 10 * 60),
-  ('LargeTest', 5 * 60),
-  ('MediumTest', 3 * 60),
-  ('SmallTest', 1 * 60),
+    ('Manual', 10 * 60 * 60),
+    ('IntegrationTest', 10 * 60),
+    ('External', 10 * 60),
+    ('EnormousTest', 5 * 60),
+    ('LargeTest', 2 * 60),
+    ('MediumTest', 30),
+    ('SmallTest', 10),
 ]
+
+# Account for Instrumentation and process init overhead.
+FIXED_TEST_TIMEOUT_OVERHEAD = 60
+
+# 30 minute max timeout for an instrumentation invocation to avoid shard
+# timeouts when tests never finish. The shard timeout is currently 60 minutes,
+# so this needs to be less than that.
+MAX_BATCH_TEST_TIMEOUT = 30 * 60
 
 LOGCAT_FILTERS = ['*:e', 'chromium:v', 'cr_*:v', 'DEBUG:I',
                   'StrictMode:D', '%s:I' % _TAG]
@@ -98,6 +107,8 @@ _DEVICE_GOLD_DIR = 'skia_gold'
 # A map of Android product models to SDK ints.
 RENDER_TEST_MODEL_SDK_CONFIGS = {
     'Nexus 5X': [23],
+    # Android x86 emulator.
+    'Android SDK built for x86': [23],
 }
 
 _TEST_BATCH_MAX_GROUP_SIZE = 256
@@ -271,10 +282,18 @@ class LocalDeviceInstrumentationTestRun(
       steps.extend(
           install_helper(apk) for apk in self._test_instance.additional_apks)
 
+      # We'll potentially need the package names later for setting app
+      # compatibility workarounds.
+      for apk in (self._test_instance.additional_apks +
+                  [self._test_instance.test_apk]):
+        self._installed_packages.append(apk_helper.GetPackageName(apk))
+
       # The apk under test needs to be installed last since installing other
       # apks after will unintentionally clear the fake module directory.
       # TODO(wnwen): Make this more robust, fix crbug.com/1010954.
       if self._test_instance.apk_under_test:
+        self._installed_packages.append(
+            apk_helper.GetPackageName(self._test_instance.apk_under_test))
         permissions = self._test_instance.apk_under_test.GetPermissions()
         if self._test_instance.apk_under_test_incremental_install_json:
           steps.append(
@@ -529,17 +548,20 @@ class LocalDeviceInstrumentationTestRun(
     flags_to_add = []
     test_timeout_scale = None
     if self._test_instance.coverage_directory:
-      coverage_basename = '%s.exec' % (
-          '%s_%s_group' % (test[0]['class'], test[0]['method']) if isinstance(
-              test, list) else '%s_%s' % (test['class'], test['method']))
+      coverage_basename = '%s' % ('%s_%s_group' %
+                                  (test[0]['class'], test[0]['method'])
+                                  if isinstance(test, list) else '%s_%s' %
+                                  (test['class'], test['method']))
+      if self._test_instance.jacoco_coverage_type:
+        coverage_basename += "_" + self._test_instance.jacoco_coverage_type
       extras['coverage'] = 'true'
       coverage_directory = os.path.join(
           device.GetExternalStoragePath(), 'chrome', 'test', 'coverage')
       if not device.PathExists(coverage_directory):
         device.RunShellCommand(['mkdir', '-p', coverage_directory],
                                check_return=True)
-      coverage_device_file = os.path.join(
-          coverage_directory, coverage_basename)
+      coverage_device_file = os.path.join(coverage_directory, coverage_basename,
+                                          '.exec')
       extras['coverageFile'] = coverage_device_file
     # Save screenshot if screenshot dir is specified (save locally) or if
     # a GS bucket is passed (save in cloud).
@@ -575,7 +597,8 @@ class LocalDeviceInstrumentationTestRun(
       test_name = instrumentation_test_instance.GetTestName(test[0]) + '_batch'
       extras['class'] = ','.join(test_names)
       test_display_name = test_name
-      timeout = sum(timeouts)
+      timeout = min(MAX_BATCH_TEST_TIMEOUT,
+                    FIXED_TEST_TIMEOUT_OVERHEAD + sum(timeouts))
     else:
       assert test['is_junit4']
       test_name = instrumentation_test_instance.GetTestName(test)
@@ -584,8 +607,8 @@ class LocalDeviceInstrumentationTestRun(
       extras['class'] = test_name
       if 'flags' in test and test['flags']:
         flags_to_add.extend(test['flags'])
-      timeout = self._GetTimeoutFromAnnotations(
-        test['annotations'], test_display_name)
+      timeout = FIXED_TEST_TIMEOUT_OVERHEAD + self._GetTimeoutFromAnnotations(
+          test['annotations'], test_display_name)
 
       test_timeout_scale = self._GetTimeoutScaleFromAnnotations(
           test['annotations'])
@@ -863,9 +886,12 @@ class LocalDeviceInstrumentationTestRun(
                  self._test_instance.junit4_runner_class)
     def list_tests(d):
       def _run(dev):
+        # We need to use GetAppWritablePath instead of GetExternalStoragePath
+        # here because we will not have applied legacy storage workarounds on R+
+        # yet.
         with device_temp_file.DeviceTempFile(
             dev.adb, suffix='.json',
-            dir=dev.GetExternalStoragePath()) as dev_test_list_json:
+            dir=dev.GetAppWritablePath()) as dev_test_list_json:
           junit4_runner_class = self._test_instance.junit4_runner_class
           test_package = self._test_instance.test_package
           extras = {
@@ -909,10 +935,9 @@ class LocalDeviceInstrumentationTestRun(
 
   @contextlib.contextmanager
   def _ArchiveLogcat(self, device, test_name):
-    stream_name = 'logcat_%s_%s_%s' % (
-        test_name.replace('#', '.'),
-        time.strftime('%Y%m%dT%H%M%S-UTC', time.gmtime()),
-        device.serial)
+    stream_name = 'logcat_%s_%s_%s' % (test_name.replace(
+        '#', '.'), time.strftime('%Y%m%dT%H%M%S-UTC',
+                                 time.gmtime()), device.serial)
 
     logcat_file = None
     logmon = None

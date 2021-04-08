@@ -107,7 +107,9 @@ if (is_chromeos_device && cros_sdk_version != "") {
 #       results tracking and displaying (eg: flakiness dashboard).
 #   generated_script: Path to place the generated script.
 #   deploy_chrome: If true, deploys a locally built chrome located in the root
-#       build dir to the VM after launching it.
+#       build dir to the VM or DUT after launching it.
+#   deploy_lacros: If true, deploys a locally built Lacros located in the root
+#       build dir to the VM or DUT after launching it.
 #   runtime_deps_file: Path to file listing runtime deps for the test. If set,
 #       all files listed will be copied to the VM before testing.
 #   override_board: "cros_board" variable was used to decide both the toolchain
@@ -124,6 +126,7 @@ template("generate_runner_script") {
                          [
                            "override_board",
                            "deploy_chrome",
+                           "deploy_lacros",
                            "generated_script",
                            "runtime_deps_file",
                            "tast_attr_expr",
@@ -160,6 +163,13 @@ template("generate_runner_script") {
     if (!defined(deploy_chrome)) {
       deploy_chrome = false
     }
+
+    if (!defined(deploy_lacros)) {
+      deploy_lacros = false
+    }
+
+    assert(!(deploy_chrome && deploy_lacros),
+           "deploy_chrome and deploy_lacros are exclusive.")
 
     if (is_tast || cros_is_vm || deploy_chrome) {
       _symlink_targets = []
@@ -208,7 +218,6 @@ template("generate_runner_script") {
 
     data = [
       "//.vpython",
-      "//testing/test_env.py",
 
       # We use android test-runner's results libs to construct gtest output
       # json.
@@ -232,8 +241,10 @@ template("generate_runner_script") {
       data += invoker.data
     }
 
+    data_deps = [ "//testing:test_scripts_shared" ]
+
     if (defined(invoker.data_deps)) {
-      data_deps = invoker.data_deps
+      data_deps += invoker.data_deps
     }
 
     # Required arguments used at build time by the runner script generator.
@@ -264,7 +275,7 @@ template("generate_runner_script") {
       args += [ "--deploy-chrome" ]
     }
 
-    if (is_chromeos_lacros) {
+    if (deploy_lacros) {
       args += [ "--deploy-lacros" ]
     }
 
@@ -392,10 +403,28 @@ template("lacros_tast_test") {
   forward_variables_from(invoker,
                          [
                            "override_board",
+                           "tast_attr_expr",
+                           "tast_disabled_tests",
                            "tast_tests",
                          ])
+  assert(defined(tast_attr_expr) != defined(tast_tests),
+         "Specify one of tast_tests or tast_attr_expr.")
+
+  # Append any disabled tests to the expression.
+  if (defined(tast_disabled_tests)) {
+    assert(defined(tast_attr_expr),
+           "tast_attr_expr must be used when specifying tast_disabled_tests.")
+    foreach(test, tast_disabled_tests) {
+      tast_attr_expr += " && !\"name:${test}\""
+    }
+  }
+  if (defined(tast_attr_expr)) {
+    tast_attr_expr = "( " + tast_attr_expr + " )"
+  }
+
   generate_runner_script(target_name) {
     testonly = true
+    deploy_lacros = true
     generated_script = "$root_build_dir/bin/run_${target_name}"
     runtime_deps_file = "$root_out_dir/${target_name}.runtime_deps"
 
@@ -405,6 +434,11 @@ template("lacros_tast_test") {
     # pre-deployed lacros-chrome. The location is decided by:
     # https://source.chromium.org/chromium/chromium/src/+/master:third_party/chromite/scripts/deploy_chrome.py;l=80;drc=86f1234a4be8e9574442e076cdc835897f7bea61
     tast_vars = [ "lacrosDeployedBinary=/usr/local/lacros-chrome" ]
+
+    # Lacros tast tests may have different test expectations based on whether
+    # they're for Chromium or Chrome.
+    tast_vars += [ "lacrosIsChromeBranded=$is_chrome_branded" ]
+
     data_deps = [
       "//chrome",  # Builds the browser.
 
