@@ -144,6 +144,15 @@ declare_args() {
   # The gold linker by default has text section splitting enabled.
   use_text_section_splitting = false
 
+  # We use the 'minimal_symbols' config for official builds to limit the size of
+  # debug info to keep the distributed binaries reasonably small. However when
+  # V8 is built with `clang -g1`, approximately 40MB of debug data is added to
+  # the final executable, mostly in the form of `DW_TAG_inlined_subroutine` tags
+  # or its COFF equivalent. Leaving out those tags reduces the size of the debug
+  # sections to a much more reasonable 5MB while still providing pretty usable
+  # stack traces when the application crashes.
+  no_inline_line_tables = is_clang
+
   # Token limits may not be accurate for build configs not covered by the CQ,
   # so only enable them by default for mainstream build configs.
   enable_wmax_tokens =
@@ -2436,6 +2445,13 @@ config("minimal_symbols") {
       # -gline-tables-only is the same as -g1, but clang-cl only exposes the
       # former.
       cflags += [ "-gline-tables-only" ]
+
+      if (no_inline_line_tables) {
+        cflags += [
+          "-Xclang",
+          "-gno-inline-line-tables",
+        ]
+      }
     }
   } else {
     cflags = []
@@ -2459,7 +2475,13 @@ config("minimal_symbols") {
     if (!is_nacl || is_clang) {
       cflags += [ "-g1" ]
     }
+
+    if (no_inline_line_tables) {
+      cflags += [ "-gno-inline-line-tables" ]
+    }
+
     ldflags = []
+
     if (is_android && is_clang) {
       # Android defaults to symbol_level=1 builds in production builds
       # (https://crbug.com/648948), but clang, unlike gcc, doesn't emit
