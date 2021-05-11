@@ -20,6 +20,11 @@ declare_args() {
   # Turn this on to have the linker output extra timing information.
   win_linker_timing = false
 
+  # Don't register which CRT flavor was used when an object file was created.
+  # This makes it possible to produce static libraries that can be linked either
+  # statically or dynamically to the C runtime.
+  win_crt_flavor_agnostic = false
+
   # possible values for target_winuwp_version:
   #   "10" - Windows UWP 10
   #   "8.1" - Windows RT 8.1
@@ -529,6 +534,14 @@ config("static_crt") {
     if (use_custom_libcxx) {
       ldflags = [ "/DEFAULTLIB:libcpmt.lib" ]
     }
+  }
+}
+
+config("win_static_library_flags") {
+  if (win_crt_flavor_agnostic) {
+    # The `/Zl` ("omit default library name") flag makes the compiler produce
+    # object files that can link with both the static and dynamic CRT.
+    cflags = [ "/Zl" ]
   }
 }
 
