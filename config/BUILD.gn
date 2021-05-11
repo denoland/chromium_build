@@ -323,6 +323,15 @@ config("executable_config") {
   }
 }
 
+# Static library configs -------------------------------------------------------
+
+# This config defines the configs applied to all static libraries.
+config("static_library_config") {
+  if (is_win) {
+    configs = [ "//build/config/win:win_static_library_flags" ]
+  }
+}
+
 # Shared library configs -------------------------------------------------------
 
 # This config defines the configs applied to all shared libraries.

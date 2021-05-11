@@ -395,12 +395,15 @@ if (is_debug) {
   default_compiler_configs += [ "//build/config:release" ]
 }
 
-# Static libraries and source sets use only the compiler ones.
+# Static library defaults.
+default_static_library_configs =
+    default_compiler_configs + [ "//build/config:static_library_config" ]
+
 set_defaults("static_library") {
-  configs = default_compiler_configs
+  configs = default_static_library_configs
 }
 set_defaults("source_set") {
-  configs = default_compiler_configs
+  configs = default_static_library_configs
 }
 set_defaults("rust_library") {
   configs = default_compiler_configs
