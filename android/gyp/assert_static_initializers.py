@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Copyright 2017 The Chromium Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
@@ -24,7 +24,7 @@ _DUMP_STATIC_INITIALIZERS_PATH = os.path.join(build_utils.DIR_SOURCE_ROOT,
 
 def _RunReadelf(so_path, options, tool_prefix=''):
   return subprocess.check_output([tool_prefix + 'readelf'] + options +
-                                 [so_path])
+                                 [so_path]).decode('utf8')
 
 
 def _ParseLibBuildId(so_path, tool_prefix):

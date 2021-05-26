@@ -83,6 +83,7 @@ def CommonChecks(input_api, output_api):
               J('pylib', 'gtest', 'gtest_test_instance_test.py'),
               J('pylib', 'instrumentation',
                 'instrumentation_test_instance_test.py'),
+              J('pylib', 'local', 'device', 'local_device_gtest_run_test.py'),
               J('pylib', 'local', 'device',
                 'local_device_instrumentation_test_run_test.py'),
               J('pylib', 'local', 'device', 'local_device_test_run_test.py'),
@@ -104,7 +105,8 @@ def CommonChecks(input_api, output_api):
               J('pylib', 'utils', 'test_filter_test.py'),
               J('.', 'convert_dex_profile_tests.py'),
           ],
-          env=pylib_test_env))
+          env=pylib_test_env,
+          run_on_python2=False))
 
   return input_api.RunTests(tests)
 

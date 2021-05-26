@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright (c) 2013 The Chromium Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
@@ -188,7 +188,7 @@ def _WriteXmlFile(root, path):
     # makes it a lot easier to read as a human (also on code search).
     f.write(
         minidom.parseString(ElementTree.tostring(
-            root, encoding='utf-8')).toprettyxml(indent='  '))
+            root, encoding='utf-8')).toprettyxml(indent='  ').encode('utf-8'))
 
 
 def _RunLint(lint_binary_path,
@@ -218,6 +218,13 @@ def _RunLint(lint_binary_path,
       '--disable',
       ','.join(_DISABLED_ALWAYS),
   ]
+
+  # Crashes lint itself, see b/187524311
+  # Only disable if we depend on androidx.fragment (otherwise lint fails due to
+  # non-existent check).
+  if any('androidx_fragment_fragment' in aar for aar in aars):
+    cmd.extend(['--disable', 'DialogFragmentCallbacksDetector'])
+
   if baseline:
     cmd.extend(['--baseline', baseline])
   if testonly_target:
@@ -358,6 +365,9 @@ def _ParseArgs(argv):
   parser = argparse.ArgumentParser()
   build_utils.AddDepfileOption(parser)
   parser.add_argument('--target-name', help='Fully qualified GN target name.')
+  parser.add_argument('--skip-build-server',
+                      action='store_true',
+                      help='Avoid using the build server.')
   parser.add_argument('--lint-binary-path',
                       required=True,
                       help='Path to lint executable.')
@@ -437,8 +447,9 @@ def main():
   #              invocations.
   # Avoid parallelizing cache creation since lint runs without the cache defeat
   # the purpose of creating the cache in the first place.
-  if not args.create_cache and server_utils.MaybeRunCommand(
-      name=args.target_name, argv=sys.argv, stamp_file=args.stamp):
+  if (not args.create_cache and not args.skip_build_server
+      and server_utils.MaybeRunCommand(
+          name=args.target_name, argv=sys.argv, stamp_file=args.stamp)):
     return
 
   sources = []
