@@ -271,7 +271,9 @@ def _RunTestWithAshChrome(args, forward_args):
     args (dict): Args for this script.
     forward_args (dict): Args to be forwarded to the test command.
   """
-  if args.ash_chrome_path:
+  if args.ash_chrome_path_override:
+    ash_chrome_file = args.ash_chrome_path_override
+  elif args.ash_chrome_path:
     ash_chrome_file = args.ash_chrome_path
   else:
     ash_chrome_version = (args.ash_chrome_version
@@ -287,7 +289,7 @@ def _RunTestWithAshChrome(args, forward_args):
     tmp_ash_data_dir_name = tempfile.mkdtemp()
 
     # Please refer to below file for how mojo connection is set up in testing.
-    # //chrome/browser/chromeos/crosapi/test_mojo_connection_manager.h
+    # //chrome/browser/ash/crosapi/test_mojo_connection_manager.h
     lacros_mojo_socket_file = '%s/lacros.sock' % tmp_ash_data_dir_name
     lacros_mojo_socket_arg = ('--lacros-mojo-socket-for-testing=%s' %
                               lacros_mojo_socket_file)
@@ -302,6 +304,7 @@ def _RunTestWithAshChrome(args, forward_args):
         '--user-data-dir=%s' % tmp_ash_data_dir_name,
         '--enable-wayland-server',
         '--no-startup-window',
+        '--use-fake-ml-service-for-test',
     ]
     if enable_mojo_crosapi:
       ash_cmd.append(lacros_mojo_socket_arg)
@@ -457,6 +460,16 @@ def Main():
       type=str,
       help='Path to an locally built ash-chrome to use for testing.')
 
+  # This is for version skew testing. The current CI/CQ builder builds
+  # an ash chrome and pass it using --ash-chrome-path. In order to use the same
+  # builder for version skew testing, we use a new argument to override
+  # the ash chrome.
+  test_parser.add_argument(
+      '--ash-chrome-path-override',
+      type=str,
+      help='The same as --ash-chrome-path. But this will override '
+      '--ash-chrome-path or --ash-chrome-version if any of these '
+      'arguments exist.')
   args = arg_parser.parse_known_args()
   return args[0].func(args[0], args[1])
 
