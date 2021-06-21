@@ -578,6 +578,6 @@ set_defaults("component") {
       configs -= [ "//build/config/android:hide_all_but_jni_onload" ]
     }
   } else {
-    configs = default_compiler_configs
+    configs = default_static_library_configs
   }
 }
