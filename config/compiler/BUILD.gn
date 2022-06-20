@@ -1605,6 +1605,16 @@ config("default_warnings") {
   }
 
   if (is_clang) {
+    if (is_win) {
+      clang_bin = "clang-cl"
+    } else {
+      clang_bin = "clang"
+    }
+
+    clang_major_version = exec_script("//build/print_clang_major_version.py",
+                                      [ "$clang_base_path/bin/$clang_bin" ],
+                                      "trim value")
+
     cflags += [
       "-Wloop-analysis",
 
@@ -1629,7 +1639,13 @@ config("default_warnings") {
         "-Wno-ignored-pragma-optimize",
       ]
 
-      if (!is_nacl) {
+      if (clang_major_version <= 13) {
+        # Clang 13 supports alignment values up to 536870912 bytes. V8 uses even
+        # greater alignment values.
+        cflags += [ "-Wno-builtin-assume-aligned-alignment" ]
+      }
+
+      if (!is_nacl && clang_major_version >= 16) {
         cflags += [
           # TODO(crbug.com/1343975) Evaluate and possibly enable.
           "-Wno-deprecated-builtins",
