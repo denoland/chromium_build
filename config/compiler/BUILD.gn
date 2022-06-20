@@ -1511,6 +1511,16 @@ config("default_warnings") {
   }
 
   if (is_clang) {
+    if (is_win) {
+      clang_bin = "clang-cl"
+    } else {
+      clang_bin = "clang"
+    }
+
+    clang_major_version = exec_script("//build/print_clang_major_version.py",
+                                      [ "$clang_base_path/bin/$clang_bin" ],
+                                      "trim value")
+
     cflags += [
       "-Wloop-analysis",
 
@@ -1543,13 +1553,20 @@ config("default_warnings") {
         "-Wno-ignored-pragma-optimize",
       ]
 
-      if (!is_nacl) {
+      if (clang_major_version <= 13) {
+        # Clang 13 supports alignment values up to 536870912 bytes. V8 uses even
+        # greater alignment values.
+        cflags += [ "-Wno-builtin-assume-aligned-alignment" ]
+      }
+
+      if (!is_nacl && clang_major_version >= 15) {
         # TODO(https://crbug.com/1300731) Clean up and enable.
         cflags += [ "-Wno-unqualified-std-cast-call" ]
       }
 
       if (!is_nacl && !(is_chromeos ||
-                        default_toolchain == "//build/toolchain/cros:target")) {
+                        default_toolchain == "//build/toolchain/cros:target") &&
+          clang_major_version >= 15) {
         # TODO(https://crbug.com/1316298): Re-enable once test failure is figured out
         cflags += [
           "-Xclang",
