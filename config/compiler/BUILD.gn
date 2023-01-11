@@ -2558,7 +2558,7 @@ config("minimal_symbols") {
   }
 
   if (!is_nacl && is_clang && !is_tsan && !is_asan && !is_win &&
-      !is_ios && !line_tables_only) {
+      !line_tables_only) {
     # See comment for -gdwarf-aranges in config("symbols").
     cflags += [ "-gdwarf-aranges" ]
   }
