@@ -643,7 +643,7 @@ config("compiler") {
     # TODO(crbug.com/376278218): This causes segfault on Linux ARM builds.
     if (is_linux && !llvm_android_mainline && current_cpu != "arm" &&
         default_toolchain != "//build/toolchain/cros:target") {
-      cflags += [ "-Wa,--crel,--allow-experimental-crel" ]
+      # cflags += [ "-Wa,--crel,--allow-experimental-crel" ]
     }
   }
 
