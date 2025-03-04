@@ -642,7 +642,7 @@ config("compiler") {
     # (excluding toolchains that use an older version of LLVM).
     if (is_linux && !llvm_android_mainline &&
         default_toolchain != "//build/toolchain/cros:target") {
-      cflags += [ "-Wa,--crel,--allow-experimental-crel" ]
+      # cflags += [ "-Wa,--crel,--allow-experimental-crel" ]
     }
   }
 
