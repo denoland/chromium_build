@@ -662,7 +662,7 @@ config("compiler") {
     # It also causes segfault on Linux s390x:
     # https://github.com/llvm/llvm-project/issues/149511
     if (is_linux && use_lld && current_cpu != "arm" && current_cpu != "s390x") {
-      cflags += [ "-Wa,--crel,--allow-experimental-crel" ]
+      # cflags += [ "-Wa,--crel,--allow-experimental-crel" ]
     }
   }
 
