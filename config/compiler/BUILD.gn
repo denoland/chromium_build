@@ -695,7 +695,7 @@ config("compiler") {
     if (is_linux && use_lld && !llvm_android_mainline && current_cpu != "arm" &&
         current_cpu != "s390x" &&
         default_toolchain != "//build/toolchain/cros:target") {
-      cflags += [ "-Wa,--crel,--allow-experimental-crel" ]
+      # cflags += [ "-Wa,--crel,--allow-experimental-crel" ]
     }
   }
 
