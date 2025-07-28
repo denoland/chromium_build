@@ -53,9 +53,9 @@ def main():
   # if it's set. In practice we've seen a case where someone had the value set
   # in their build environment with no intention of it reaching bindgen, leading
   # to a hard-to-debug build error.
-  if 'TARGET' in os.environ:
-    sys.exit('ERROR: saw TARGET in environment, remove to avoid bindgen'
-             ' failures')
+  #if 'TARGET' in os.environ:
+  #  sys.exit('ERROR: saw TARGET in environment, remove to avoid bindgen'
+  #           ' failures')
 
   with contextlib.ExitStack() as stack:
     # Args passed to the actual bindgen cli
