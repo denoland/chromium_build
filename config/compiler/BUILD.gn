@@ -3060,6 +3060,8 @@ config("symbols") {
         # Debug information in the .obj files.
         "/Z7",
 
+        "-Wno-unused-command-line-argument",
+
         # Disable putting the compiler command line into the debug info to
         # prevent some types of non-determinism.
         "-gno-codeview-command-line",
@@ -3229,6 +3231,8 @@ config("minimal_symbols") {
     # Functions, files, and line tables only.
     if (is_clang) {
       cflags += [
+        "-Wno-unused-command-line-argument",
+
         # Disable putting the compiler command line into the debug info to
         # prevent some types of non-determinism.
         "-gno-codeview-command-line",
