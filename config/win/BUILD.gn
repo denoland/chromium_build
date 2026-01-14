@@ -121,7 +121,8 @@ config("compiler") {
     # microarchitecture. MSVC only supports a subset of architectures, and the
     # next step after SSE2 will be AVX.
     if (current_cpu == "x86" || current_cpu == "x64") {
-      cflags += [ "-msse3" ]
+      # TODO(littledivy): current_cpu is set to rust_host_toolchain_arch for clang toolchain?
+      # cflags += [ "-msse3" ]
     }
 
     # Enable ANSI escape codes if something emulating them is around (cmd.exe
