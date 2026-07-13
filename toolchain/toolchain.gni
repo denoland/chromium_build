@@ -28,6 +28,11 @@ declare_args() {
   # scripts.
   toolchain_for_rust_host_build_tools = false
 
+  # Build the target (C/C++ and Rust) against musl libc instead of
+  # glibc. Scoped to the target toolchain only; host build tools stay
+  # glibc via the toolchain_for_rust_host_build_tools guard.
+  use_musl = false
+
   # If false, the toolchain overrides `use_partition_alloc_as_malloc` in
   # PartitionAlloc, to allow use of the system allocator.
   toolchain_allows_use_partition_alloc_as_malloc = true

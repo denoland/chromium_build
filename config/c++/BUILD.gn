@@ -1,4 +1,5 @@
 import("//build/config/c++/c++.gni")
+import("//build/toolchain/toolchain.gni")
 import("//build/config/c++/modules.gni")
 import("//build/config/chrome_build.gni")
 import("//build/config/compiler/compiler.gni")
@@ -18,6 +19,19 @@ config("runtime_library") {
   include_dirs = []
   ldflags = []
   libs = []
+
+  # V8's bundled libc++ gates its ctype rune table on __GLIBC__, which
+  # musl doesn't define; use libc++'s portable default rune table and
+  # flag musl for the remaining locale differences. Target only.
+  if (use_musl && !toolchain_for_rust_host_build_tools) {
+    defines += [
+      "_LIBCPP_PROVIDES_DEFAULT_RUNE_TABLE",
+      "_LIBCPP_HAS_MUSL_LIBC",
+    ]
+    # The musl sysroot has no gcc runtime (crtbegin/libgcc); use
+    # clang's bundled compiler-rt for the C runtime instead.
+    ldflags += [ "-rtlib=compiler-rt" ]
+  }
 
   # Fixed libc++ configuration macros are in
   # buildtools/third_party/libc++/__config_site. This config only has defines
