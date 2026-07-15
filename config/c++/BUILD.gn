@@ -24,7 +24,7 @@ config("runtime_library") {
   # V8's bundled libc++ gates its ctype rune table on __GLIBC__, which
   # musl doesn't define; use libc++'s portable default rune table and
   # flag musl for the remaining locale differences. Target only.
-  if (use_musl && !toolchain_for_rust_host_build_tools) {
+  if (use_musl && current_toolchain == default_toolchain) {
     defines += [
       "_LIBCPP_PROVIDES_DEFAULT_RUNE_TABLE",
       "_LIBCPP_HAS_MUSL_LIBC",
