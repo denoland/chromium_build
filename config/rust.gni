@@ -345,10 +345,11 @@ if (is_linux || is_chromeos) {
 
 # When targeting musl, rewrite the gnu triple to its musl counterpart
 # (x86_64-unknown-linux-gnu -> x86_64-unknown-linux-musl, etc.) so V8's
-# internal Rust crates + libstd are built for musl. The host build-tools
-# toolchain must stay glibc, so exclude it.
+# internal Rust crates + libstd are built for musl. Only the default (target)
+# toolchain is musl; host and snapshot toolchains (which build executable build
+# tools that run on the glibc build host) stay glibc.
 if (use_musl && rust_abi_target != "" &&
-    !toolchain_for_rust_host_build_tools) {
+    current_toolchain == default_toolchain) {
   rust_abi_target = string_replace(rust_abi_target, "-gnu", "-musl")
 }
 
