@@ -538,9 +538,11 @@ config("compiler") {
     rustflags += [ "-Csplit-debuginfo=unpacked" ]
   }
 
-  # Linux/Android/Fuchsia common flags setup.
-  # ---------------------------------
-  if (is_linux || is_chromeos || is_android || is_fuchsia) {
+  # Common setup for a bundle of platforms
+  # --------------------------------------------------
+  if (is_linux || is_chromeos || is_android || is_fuchsia ||
+      current_os == "freebsd") {
+    # Position-independent code flags are required on these platforms.
     asmflags += [ "-fPIC" ]
     cflags += [ "-fPIC" ]
     ldflags += [ "-fPIC" ]
