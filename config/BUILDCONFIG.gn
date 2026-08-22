@@ -229,6 +229,8 @@ if (host_toolchain == "") {
     } else {
       host_toolchain = "//build/toolchain/linux:$host_cpu"
     }
+  } else if (host_os == "freebsd") {
+    host_toolchain = "//build/toolchain/freebsd:clang_$host_cpu"
   } else if (host_os == "mac") {
     host_toolchain = "//build/toolchain/mac:clang_$host_cpu"
   } else if (host_os == "win") {
@@ -268,6 +270,8 @@ if (target_os == "android") {
   } else {
     _default_toolchain = "//build/toolchain/linux:$target_cpu"
   }
+} else if (target_os == "freebsd") {
+  _default_toolchain = "//build/toolchain/freebsd:clang_$target_cpu"
 } else if (target_os == "fuchsia") {
   _default_toolchain = "//build/toolchain/fuchsia:$target_cpu"
 } else if (target_os == "ios") {

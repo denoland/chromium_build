@@ -267,7 +267,8 @@ clang_lib("compiler_builtins") {
     } else {
       assert(false, "unsupported target_platform=$target_platform")
     }
-  } else if (current_cpu != "ppc64" && current_cpu != "s390x") {
+  } else if (current_cpu != "ppc64" && current_cpu != "s390x" &&
+             current_os != "freebsd") {
     libname = "builtins"
   }
 }
