@@ -1,1 +1,8 @@
-android_ndk_version = "r30"
+declare_args() {
+  android_ndk_version = ""
+}
+
+if (is_android) {
+  assert(android_ndk_version != "",
+         "The android_ndk_version must be specified when targeting Android")
+}
