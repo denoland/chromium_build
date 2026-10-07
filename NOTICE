@@ -1,0 +1,5 @@
+This repository is a fork of the build directory of Chromium
+(https://chromium.googlesource.com/chromium/src/build), used to build V8
+for rusty_v8. It is licensed under Chromium's BSD-3-Clause license; see
+LICENSE. Modifications made by the Deno authors are licensed under the same
+terms.
