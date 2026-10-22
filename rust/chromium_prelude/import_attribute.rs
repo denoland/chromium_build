@@ -100,7 +100,7 @@ impl Parse for ImportList {
                     Err(e) => {
                         return Err(Error::new(
                             str_span,
-                            format!("invalid GN path {}: {}", quote::quote! {#label}, e),
+                            format!("invalid GN path {}: {e}", quote::quote! {#label}),
                         ));
                     }
                 },

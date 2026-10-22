@@ -28,7 +28,7 @@ pub fn say_hello() {
 pub fn alloc_aligned() {
     let layout = unsafe { Layout::from_size_align_unchecked(1024, 512) };
     let ptr = unsafe { alloc(layout) };
-    println!("Alloc aligned ptr: {:p}", ptr);
+    println!("Alloc aligned ptr: {ptr:p}");
     unsafe { dealloc(ptr, layout) };
 }
 
