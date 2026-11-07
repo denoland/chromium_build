@@ -21,7 +21,7 @@ import action_helpers
 import gn_helpers
 
 SCRIPT_DIR = os.path.dirname(__file__)
-SDK_VERSION = '10.0.28000.0'
+SDK_VERSION = '10.0.26100.0'  # rusty_v8: SDK on GitHub's Windows runners
 MSVC_DIR = re.compile('^.*/VC/Tools/MSVC/[^/]+/include$')
 WINDOWS_KITS_DIR = re.compile(r'^(.*/Windows Kits/\d+/Include/[^/]+)/.*')
 
